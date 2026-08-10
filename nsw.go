@@ -1,31 +1,92 @@
 package vektor
 
+import (
+	"errors"
+	"fmt"
+)
+
 type node struct {
-	v            Vector
-	neighbors    []*node
-	maxNeighbors int
+	v         Vector
+	neighbors []nodeDistance
+}
+
+type nodeDistance struct {
+	node *node
+	dist float64
+}
+
+func newNode(v Vector, maxN int) *node {
+	return &node{v: v, neighbors: make([]nodeDistance, 0, maxN+1)}
 }
 
 type NSW struct {
-	entryNode *node
+	entryNode     *node
+	maxNeighbors  int
+	initNeighbors int
+	dist          distance
 }
 
-var _ Database = NSW{}
+var _ Database = &NSW{}
 
-func (n NSW) Insert(vec Vector) error {
-	panic("unimplemented")
-}
+func (n *NSW) Insert(vec Vector) error {
+	node := newNode(vec, n.maxNeighbors)
 
-func (n NSW) Delete(vec Vector) error {
-	panic("unimplemented")
-}
-
-func (n NSW) FindClosest(vec Vector, k int, dist distance) ([]Vector, error) {
-	s := newSearcher(vec, k, dist, n.entryNode)
-	for s.next() {
+	if n.entryNode == nil {
+		n.entryNode = node
+		return nil
 	}
 
-	return s.getResult(), s.getErr()
+	s := doSearch(vec, n.initNeighbors, n.dist, n.entryNode)
+	if err := s.getErr(); err != nil {
+		return fmt.Errorf("finding neighbors of new vector: %w", err)
+	}
+
+	for _, newNeighbor := range s.getResultNodes() {
+		distNodeNeighbor, err := n.dist(vec, newNeighbor.v)
+		if err != nil {
+			return fmt.Errorf("calculating vector distance: %w", err)
+		}
+
+		node.neighbors = append(node.neighbors, nodeDistance{newNeighbor, distNodeNeighbor})
+		newNeighbor.neighbors = append(newNeighbor.neighbors, nodeDistance{node, distNodeNeighbor})
+
+		if len(newNeighbor.neighbors) > n.maxNeighbors {
+			removeWorstNeighbor(newNeighbor)
+		}
+	}
+
+	return nil
+}
+
+func removeWorstNeighbor(n *node) {
+	if len(n.neighbors) == 0 {
+		return
+	}
+
+	worstIdx := 0
+	maxDist := n.neighbors[0].dist
+	for i := 1; i < len(n.neighbors); i++ {
+		if n.neighbors[i].dist > maxDist {
+			maxDist = n.neighbors[i].dist
+			worstIdx = i
+		}
+	}
+
+	lastIdx := len(n.neighbors) - 1
+
+	n.neighbors[worstIdx] = n.neighbors[lastIdx]
+
+	n.neighbors[lastIdx] = nodeDistance{}
+	n.neighbors = n.neighbors[:lastIdx]
+}
+
+func (n *NSW) Delete(vec Vector) error {
+	panic("unimplemented")
+}
+
+func (n *NSW) FindClosest(vec Vector, k int) ([]Vector, error) {
+	s := doSearch(vec, k, n.dist, n.entryNode)
+	return s.getResultVectors(), s.getErr()
 }
 
 type searcher struct {
@@ -37,6 +98,13 @@ type searcher struct {
 	distances       map[int]float64
 	k               int
 	err             error
+}
+
+func doSearch(vec Vector, k int, dist distance, entryNode *node) *searcher {
+	s := newSearcher(vec, k, dist, entryNode)
+	for s.next() {
+	}
+	return s
 }
 
 func newSearcher(targetVec Vector, k int, dist distance, entryNode *node) *searcher {
@@ -55,7 +123,7 @@ func newSearcher(targetVec Vector, k int, dist distance, entryNode *node) *searc
 		s.err = err
 	}
 
-	s.candidateQueue.insert(nodeDistance{entryNode, entryNodeDist})
+	s.insertInQueue(entryNode, entryNodeDist)
 	return s
 }
 
@@ -88,7 +156,7 @@ func (s *searcher) next() bool {
 	}
 
 	for _, n := range curBestCandidate.node.neighbors {
-		s.handleNeighbor(n, curWorstResult)
+		s.handleNeighbor(n.node, curWorstResult)
 	}
 
 	return true
@@ -101,16 +169,14 @@ func (s *searcher) handleNeighbor(neighbor *node, curWorstResult nodeDistance) {
 		return
 	}
 
-	if s.resultQueue.len() < s.k {
-		s.insertInQue(neighbor, dist)
-	}
+	if s.resultQueue.len() < s.k ||
+		(curWorstResult.node != nil && dist < curWorstResult.dist) {
 
-	if curWorstResult.node != nil && dist < curWorstResult.dist {
-		s.insertInQue(neighbor, dist)
+		s.insertInQueue(neighbor, dist)
 	}
 }
 
-func (s *searcher) insertInQue(n *node, dist float64) {
+func (s *searcher) insertInQueue(n *node, dist float64) {
 	if _, isInserted := s.insertedInQueue[n.v.ID()]; isInserted {
 		return
 	}
@@ -126,29 +192,41 @@ func (s *searcher) insertInQue(n *node, dist float64) {
 	s.candidateQueue.insert(elem)
 }
 
-func (n *searcher) getDist(curVec, targetVec Vector) (float64, error) {
-	if d, found := n.distances[curVec.ID()]; found {
+func (s *searcher) getDist(curVec, targetVec Vector) (float64, error) {
+	if d, found := s.distances[curVec.ID()]; found {
 		return d, nil
 	}
 
-	d, err := n.dist(curVec, targetVec)
+	d, err := s.dist(curVec, targetVec)
 	if err != nil {
 		return 0, err
 	}
 
-	n.distances[curVec.ID()] = d
+	s.distances[curVec.ID()] = d
 	return d, nil
 }
 
 func (s *searcher) getErr() error {
+	if s.resultQueue.len() == 0 {
+		if s.err != nil {
+			s.err = fmt.Errorf("no results found: %w", s.err)
+		} else {
+			s.err = errors.New("no results found")
+		}
+	}
+
 	return s.err
 }
 
-func (s *searcher) getResult() []Vector {
+func (s *searcher) getResultVectors() []Vector {
 	result := make([]Vector, s.resultQueue.len())
 	for i, vd := range s.resultQueue.getSlice() {
 		result[i] = vd.v
 	}
 
 	return result
+}
+
+func (s *searcher) getResultNodes() []*node {
+	return s.resultQueue.getSlice()
 }

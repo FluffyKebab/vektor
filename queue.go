@@ -6,11 +6,6 @@ import (
 	"slices"
 )
 
-type nodeDistance struct {
-	node *node
-	dist float64
-}
-
 // priorityQueue stores pairs of nodes and distances from lowest to highest distance.
 type priorityQueue struct {
 	vecs []nodeDistance
@@ -55,6 +50,7 @@ func (q *priorityQueue) popBottom() (nodeDistance, error) {
 // removeTop drops the lowest distance element by slicing forward.
 func (q *priorityQueue) removeTop() {
 	if len(q.vecs) > 0 {
+		q.vecs[0] = nodeDistance{}
 		q.vecs = q.vecs[1:]
 	}
 }
@@ -87,4 +83,8 @@ func (q *priorityQueue) getSlice() []*node {
 		result[i] = vd.node
 	}
 	return result
+}
+
+func (q *priorityQueue) getElements() []nodeDistance {
+	return q.vecs
 }
