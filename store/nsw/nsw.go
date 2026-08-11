@@ -23,15 +23,17 @@ func newNode(v vektor.Vector, maxN int) *node {
 
 type NSW struct {
 	entryNode     *node
+	dist          vektor.Distance
+	graphObserver vektor.GraphObserver
 	maxNeighbors  int
 	initNeighbors int
-	dist          vektor.Distance
 }
 
 var _ vektor.Database = &NSW{}
 
 func (n *NSW) Insert(vec vektor.Vector) error {
 	node := newNode(vec, n.maxNeighbors)
+	n.graphObserver.OnNodeAdded(vec.ID())
 
 	if n.entryNode == nil {
 		n.entryNode = node
@@ -53,33 +55,11 @@ func (n *NSW) Insert(vec vektor.Vector) error {
 		newNeighbor.neighbors = append(newNeighbor.neighbors, nodeDistance{node, distNodeNeighbor})
 
 		if len(newNeighbor.neighbors) > n.maxNeighbors {
-			removeWorstNeighbor(newNeighbor)
+			n.removeWorstNeighbor(newNeighbor)
 		}
 	}
 
 	return nil
-}
-
-func removeWorstNeighbor(n *node) {
-	if len(n.neighbors) == 0 {
-		return
-	}
-
-	worstIdx := 0
-	maxDist := n.neighbors[0].dist
-	for i := 1; i < len(n.neighbors); i++ {
-		if n.neighbors[i].dist > maxDist {
-			maxDist = n.neighbors[i].dist
-			worstIdx = i
-		}
-	}
-
-	lastIdx := len(n.neighbors) - 1
-
-	n.neighbors[worstIdx] = n.neighbors[lastIdx]
-
-	n.neighbors[lastIdx] = nodeDistance{}
-	n.neighbors = n.neighbors[:lastIdx]
 }
 
 func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
@@ -87,13 +67,45 @@ func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 	return s.getResultVectors(), s.getErr()
 }
 
+func (n *NSW) addNeighbor(n1, n2 *node, dist float64) {
+	n.graphObserver.OnEdgeAdded(n1.v.ID(), n2.v.ID())
+	n1.neighbors = append(n1.neighbors, nodeDistance{n2, dist})
+
+	if len(n1.neighbors) > n.maxNeighbors {
+		n.removeWorstNeighbor(n1)
+	}
+}
+
+func (n *NSW) removeWorstNeighbor(n1 *node) {
+	if len(n1.neighbors) == 0 {
+		return
+	}
+
+	worstIdx := 0
+	maxDist := n1.neighbors[0].dist
+	for i := 1; i < len(n1.neighbors); i++ {
+		if n1.neighbors[i].dist > maxDist {
+			maxDist = n1.neighbors[i].dist
+			worstIdx = i
+		}
+	}
+	worstNeighborID := n1.neighbors[worstIdx].node.v.ID()
+
+	n.graphObserver.OnEdgeRemoved(n1.v.ID(), worstNeighborID)
+
+	lastIdx := len(n1.neighbors) - 1
+	n1.neighbors[worstIdx] = n1.neighbors[lastIdx]
+	n1.neighbors[lastIdx] = nodeDistance{}
+	n1.neighbors = n1.neighbors[:lastIdx]
+}
+
 type searcher struct {
 	targetVec       vektor.Vector
 	candidateQueue  *priorityQueue
 	resultQueue     *priorityQueue
-	insertedInQueue map[int]struct{}
+	insertedInQueue map[uint32]struct{}
 	dist            vektor.Distance
-	distances       map[int]float64
+	distances       map[uint32]float64
 	k               int
 	err             error
 }
@@ -111,8 +123,8 @@ func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode
 		candidateQueue:  newPriorityQueue(),
 		resultQueue:     newPriorityQueue(),
 		dist:            dist,
-		distances:       make(map[int]float64),
-		insertedInQueue: make(map[int]struct{}),
+		distances:       make(map[uint32]float64),
+		insertedInQueue: make(map[uint32]struct{}),
 		k:               k,
 	}
 

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeVec(id int, coords ...float64) vektor.InMemoryVector {
+func makeVec(id uint32, coords ...float64) vektor.InMemoryVector {
 	return vektor.NewInMemoryVector(id, coords)
 }
 
@@ -51,8 +51,8 @@ func TestNSW_FindClosest(t *testing.T) {
 		require.Len(t, results, 3)
 
 		// results slice should contain C, D, B
-		expectedIDs := []int{vecC.ID(), vecD.ID(), vecB.ID()}
-		var actualIDs []int
+		expectedIDs := []uint32{vecC.ID(), vecD.ID(), vecB.ID()}
+		var actualIDs []uint32
 		for _, r := range results {
 			actualIDs = append(actualIDs, r.ID())
 		}
@@ -143,7 +143,7 @@ func TestNSW_Insert(t *testing.T) {
 		require.NoError(t, nsw.Insert(makeVec(4, 40.0)))
 
 		// Do a quick BFS to grab all nodes and check their neighbor counts
-		visited := make(map[int]bool)
+		visited := make(map[uint32]bool)
 		queue := []*node{nsw.entryNode}
 
 		for len(queue) > 0 {
@@ -202,7 +202,7 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 	idCounter := 1
 	for x := 0.0; x < 100.0; x += 10.0 {
 		for y := 0.0; y < 100.0; y += 10.0 {
-			vec := makeVec(idCounter, x, y)
+			vec := makeVec(uint32(idCounter), x, y)
 			dataset = append(dataset, vec)
 			require.NoError(t, nsw.Insert(vec), "Insert failed at ID %d", idCounter)
 			idCounter++
@@ -222,8 +222,8 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 	require.Len(t, actualResults, k)
 
 	// 5. Compare graph search vs brute-force truth
-	var expectedIDs []int
-	var actualIDs []int
+	var expectedIDs []uint32
+	var actualIDs []uint32
 
 	for _, v := range expectedResults {
 		expectedIDs = append(expectedIDs, v.ID())

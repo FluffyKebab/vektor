@@ -1,22 +1,22 @@
 package vektor
 
 type Vector interface {
-	ID() int
+	ID() uint32
 	Read() ([]float64, error)
 }
 
 type InMemoryVector struct {
-	id   int
+	id   uint32
 	data []float64
 }
 
 var _ Vector = InMemoryVector{}
 
-func NewInMemoryVector(id int, data []float64) InMemoryVector {
+func NewInMemoryVector(id uint32, data []float64) InMemoryVector {
 	return InMemoryVector{id, data}
 }
 
-func (v InMemoryVector) ID() int {
+func (v InMemoryVector) ID() uint32 {
 	return v.id
 }
 
