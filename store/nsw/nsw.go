@@ -1,12 +1,14 @@
-package vektor
+package nsw
 
 import (
 	"errors"
 	"fmt"
+
+	"github.com/FluffyKebab/vektor"
 )
 
 type node struct {
-	v         Vector
+	v         vektor.Vector
 	neighbors []nodeDistance
 }
 
@@ -15,7 +17,7 @@ type nodeDistance struct {
 	dist float64
 }
 
-func newNode(v Vector, maxN int) *node {
+func newNode(v vektor.Vector, maxN int) *node {
 	return &node{v: v, neighbors: make([]nodeDistance, 0, maxN+1)}
 }
 
@@ -23,12 +25,12 @@ type NSW struct {
 	entryNode     *node
 	maxNeighbors  int
 	initNeighbors int
-	dist          distance
+	dist          vektor.Distance
 }
 
-var _ Database = &NSW{}
+var _ vektor.Database = &NSW{}
 
-func (n *NSW) Insert(vec Vector) error {
+func (n *NSW) Insert(vec vektor.Vector) error {
 	node := newNode(vec, n.maxNeighbors)
 
 	if n.entryNode == nil {
@@ -80,34 +82,30 @@ func removeWorstNeighbor(n *node) {
 	n.neighbors = n.neighbors[:lastIdx]
 }
 
-func (n *NSW) Delete(vec Vector) error {
-	panic("unimplemented")
-}
-
-func (n *NSW) FindClosest(vec Vector, k int) ([]Vector, error) {
+func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 	s := doSearch(vec, k, n.dist, n.entryNode)
 	return s.getResultVectors(), s.getErr()
 }
 
 type searcher struct {
-	targetVec       Vector
+	targetVec       vektor.Vector
 	candidateQueue  *priorityQueue
 	resultQueue     *priorityQueue
 	insertedInQueue map[int]struct{}
-	dist            distance
+	dist            vektor.Distance
 	distances       map[int]float64
 	k               int
 	err             error
 }
 
-func doSearch(vec Vector, k int, dist distance, entryNode *node) *searcher {
+func doSearch(vec vektor.Vector, k int, dist vektor.Distance, entryNode *node) *searcher {
 	s := newSearcher(vec, k, dist, entryNode)
 	for s.next() {
 	}
 	return s
 }
 
-func newSearcher(targetVec Vector, k int, dist distance, entryNode *node) *searcher {
+func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode *node) *searcher {
 	s := &searcher{
 		targetVec:       targetVec,
 		candidateQueue:  newPriorityQueue(),
@@ -118,7 +116,7 @@ func newSearcher(targetVec Vector, k int, dist distance, entryNode *node) *searc
 		k:               k,
 	}
 
-	entryNodeDist, err := s.getDist(targetVec, entryNode.v)
+	entryNodeDist, err := s.getDist(entryNode.v, targetVec)
 	if err != nil {
 		s.err = err
 	}
@@ -192,7 +190,7 @@ func (s *searcher) insertInQueue(n *node, dist float64) {
 	s.candidateQueue.insert(elem)
 }
 
-func (s *searcher) getDist(curVec, targetVec Vector) (float64, error) {
+func (s *searcher) getDist(curVec, targetVec vektor.Vector) (float64, error) {
 	if d, found := s.distances[curVec.ID()]; found {
 		return d, nil
 	}
@@ -218,8 +216,8 @@ func (s *searcher) getErr() error {
 	return s.err
 }
 
-func (s *searcher) getResultVectors() []Vector {
-	result := make([]Vector, s.resultQueue.len())
+func (s *searcher) getResultVectors() []vektor.Vector {
+	result := make([]vektor.Vector, s.resultQueue.len())
 	for i, vd := range s.resultQueue.getSlice() {
 		result[i] = vd.v
 	}

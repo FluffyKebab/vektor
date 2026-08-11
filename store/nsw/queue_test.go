@@ -1,4 +1,4 @@
-package vektor
+package nsw
 
 import (
 	"testing"

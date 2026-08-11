@@ -5,9 +5,9 @@ import (
 	"math"
 )
 
-type distance func(v1 Vector, v2 Vector) (float64, error)
+type Distance func(v1 Vector, v2 Vector) (float64, error)
 
-func euclidean(v1 Vector, v2 Vector) (float64, error) {
+func Euclidean(v1 Vector, v2 Vector) (float64, error) {
 	v1Data, err := v1.Read()
 	if err != nil {
 		return 0, err

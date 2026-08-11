@@ -1,4 +1,4 @@
-module vektor
+module github.com/FluffyKebab/vektor
 
 go 1.21.0
 

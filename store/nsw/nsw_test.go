@@ -1,15 +1,16 @@
-package vektor
+package nsw
 
 import (
 	"sort"
 	"testing"
 
+	"github.com/FluffyKebab/vektor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func makeVec(id int, coords ...float64) InMemoryVector {
-	return InMemoryVector{id: id, data: coords}
+func makeVec(id int, coords ...float64) vektor.InMemoryVector {
+	return vektor.NewInMemoryVector(id, coords)
 }
 
 func TestNSW_FindClosest(t *testing.T) {
@@ -29,10 +30,10 @@ func TestNSW_FindClosest(t *testing.T) {
 	nodeC.neighbors = []nodeDistance{{nodeC, 0}, {nodeD, 0}}
 	nodeD.neighbors = []nodeDistance{{nodeC, 0}}
 
-	nsw := NSW{entryNode: nodeA, dist: euclidean}
+	nsw := NSW{entryNode: nodeA, dist: vektor.Euclidean}
 
 	t.Run("Finds exact match when target exists", func(t *testing.T) {
-		target := InMemoryVector{id: 99, data: []float64{40}} // Same value as NodeD
+		target := vektor.NewInMemoryVector(99, []float64{40}) // Same value as NodeD
 
 		results, err := nsw.FindClosest(target, 1)
 		require.NoError(t, err)
@@ -42,7 +43,7 @@ func TestNSW_FindClosest(t *testing.T) {
 	})
 
 	t.Run("Finds k nearest neighbors correctly ordered", func(t *testing.T) {
-		target := InMemoryVector{id: 99, data: []float64{32}} // Closest to C(30), then D(40), then B(20)
+		target := vektor.NewInMemoryVector(99, []float64{32}) // Closest to C(30), then D(40), then B(20)
 
 		// Looking for top 3 nearest neighbors
 		results, err := nsw.FindClosest(target, 3)
@@ -59,12 +60,12 @@ func TestNSW_FindClosest(t *testing.T) {
 	})
 
 	t.Run("Distance cache prevents redundant calculations", func(t *testing.T) {
-		target := InMemoryVector{id: 99, data: []float64{25}} // Between B and C
+		target := vektor.NewInMemoryVector(99, []float64{25}) // Between B and C
 
 		callCount := 0
-		nsw.dist = func(a, b Vector) (float64, error) {
+		nsw.dist = func(a, b vektor.Vector) (float64, error) {
 			callCount++
-			return euclidean(a, b)
+			return vektor.Euclidean(a, b)
 		}
 
 		_, err := nsw.FindClosest(target, 2)
@@ -77,8 +78,8 @@ func TestNSW_FindClosest(t *testing.T) {
 		vecSolo := makeVec(5, 50)
 		nodeSolo := &node{v: vecSolo}
 
-		soloNSW := NSW{entryNode: nodeSolo, dist: euclidean}
-		target := InMemoryVector{id: 99, data: []float64{42}}
+		soloNSW := NSW{entryNode: nodeSolo, dist: vektor.Euclidean}
+		target := vektor.NewInMemoryVector(99, []float64{42})
 
 		results, err := soloNSW.FindClosest(target, 3)
 
@@ -93,7 +94,7 @@ func TestNSW_Insert(t *testing.T) {
 		nsw := &NSW{
 			maxNeighbors:  3,
 			initNeighbors: 3,
-			dist:          euclidean,
+			dist:          vektor.Euclidean,
 		}
 
 		vec1 := makeVec(1, 10.0, 10.0)
@@ -109,7 +110,7 @@ func TestNSW_Insert(t *testing.T) {
 		nsw := &NSW{
 			maxNeighbors:  3,
 			initNeighbors: 3,
-			dist:          euclidean,
+			dist:          vektor.Euclidean,
 		}
 
 		vec1 := makeVec(1, 10.0, 10.0)
@@ -130,7 +131,7 @@ func TestNSW_Insert(t *testing.T) {
 		nsw := &NSW{
 			maxNeighbors:  2,
 			initNeighbors: 2,
-			dist:          euclidean,
+			dist:          vektor.Euclidean,
 		}
 
 		// Insert 4 points sequentially on a 1D line: 10, 20, 30, 40
@@ -166,15 +167,15 @@ func TestNSW_Insert(t *testing.T) {
 	})
 }
 
-func bruteForceKNN(target Vector, dataset []Vector, k int) []Vector {
+func bruteForceKNN(target vektor.Vector, dataset []vektor.Vector, k int) []vektor.Vector {
 	type distPair struct {
-		v Vector
+		v vektor.Vector
 		d float64
 	}
 
 	var pairs []distPair
 	for _, v := range dataset {
-		d, _ := euclidean(target, v)
+		d, _ := vektor.Euclidean(target, v)
 		pairs = append(pairs, distPair{v, d})
 	}
 
@@ -182,7 +183,7 @@ func bruteForceKNN(target Vector, dataset []Vector, k int) []Vector {
 		return pairs[i].d < pairs[j].d
 	})
 
-	var result []Vector
+	var result []vektor.Vector
 	for i := 0; i < k && i < len(pairs); i++ {
 		result = append(result, pairs[i].v)
 	}
@@ -192,10 +193,10 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 	nsw := &NSW{
 		maxNeighbors:  32,
 		initNeighbors: 16,
-		dist:          euclidean,
+		dist:          vektor.Euclidean,
 	}
 
-	var dataset []Vector
+	var dataset []vektor.Vector
 
 	// 1. Build a graph of 100 vectors in a 2D spatial grid (10x10)
 	idCounter := 1
