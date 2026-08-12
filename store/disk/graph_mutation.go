@@ -3,7 +3,6 @@ package disk
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 )
 
 var errMalformedMutationData = errors.New("malformed mutation data")
@@ -42,33 +41,10 @@ func (a graphMutationAction) toBytes() []byte {
 	return result
 }
 
-func readActionsFromBytes(d []byte) ([]graphMutationAction, error) {
-	result := make([]graphMutationAction, 0)
-
-	for i := 0; i < len(d); i += actionByteSize {
-		if i+actionByteSize > len(d) {
-			return nil, errMalformedMutationData
-		}
-
-		newAction := graphMutationAction{
-			actionID(binary.LittleEndian.Uint32(d[i : i+4])),
-			binary.LittleEndian.Uint32(d[i+4 : i+8]),
-			binary.LittleEndian.Uint32(d[i+8 : i+12]),
-		}
-
-		if newAction.action == actionNone {
-			return result, nil
-		}
-
-		if newAction.action != actionAddEdge &&
-			newAction.action != actionRemoveEdge &&
-			newAction.action != actionAddNode {
-
-			return nil, fmt.Errorf("%w: unknown action id %v", errMalformedMutationData, newAction.action)
-		}
-
-		result = append(result, newAction)
+func readActionFromBytes(d []byte) graphMutationAction {
+	return graphMutationAction{
+		actionID(binary.LittleEndian.Uint32(d[0:4])),
+		binary.LittleEndian.Uint32(d[4:8]),
+		binary.LittleEndian.Uint32(d[8:12]),
 	}
-
-	return result, nil
 }

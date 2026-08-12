@@ -1,6 +1,7 @@
 package disk
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 type Store struct {
 	ramStorage          vektor.Database
+	ramMutater          vektor.GraphMutater
 	vectorSize          int
 	graphMutationWriter io.WriteCloser
 	vectorWriter        io.WriteCloser
@@ -21,19 +23,35 @@ var _ vektor.GraphObserver = &Store{}
 func NewStore(
 	graphMutationPath string,
 	vectorStorePath string,
-	ramStorage vektor.Database,
 	vectorSize int,
+	ramStorage vektor.Database,
+	vectorStore vektor.VectorStore,
+	mutationHandler vektor.GraphMutater,
 ) (*Store, error) {
-	f, err := os.Open(graphMutationPath)
+	graphDataFile, err := os.Open(graphMutationPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Store{
+	vectorDataFile, err := os.Open(vectorStorePath)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &Store{
 		ramStorage:          ramStorage,
 		vectorSize:          vectorSize,
-		graphMutationWriter: f,
-	}, nil
+		graphMutationWriter: graphDataFile,
+		vectorWriter:        vectorDataFile,
+	}
+
+	err = s.readMutations(graphDataFile, mutationHandler)
+	if err != nil {
+		return s, err
+	}
+
+	err = s.readVectorsIntoStore(vectorDataFile, vectorStore)
+	return s, err
 }
 
 func (s *Store) Insert(vec vektor.Vector) error {
@@ -76,4 +94,62 @@ func (s *Store) OnEdgeRemoved(fromID uint32, toID uint32) {
 
 func (s *Store) OnNodeAdded(nodeID uint32) {
 	s.graphMutationWriter.Write(newGraphMutationAction(actionAddEdge, nodeID, 0).toBytes())
+}
+
+func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) error {
+	reader := bufio.NewReaderSize(f, 1024*1024)
+
+	var id uint32 = 1
+
+	for {
+		vec := make([]float64, s.vectorSize)
+		err := binary.Read(reader, binary.LittleEndian, &vec)
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+
+			break
+		}
+
+		store.Store(vektor.NewInMemoryVector(id, vec))
+		id++
+	}
+	return nil
+}
+
+func (s *Store) readMutations(f io.Reader, mutationHandler vektor.GraphMutater) error {
+	bufReader := bufio.NewReader(f)
+	actionBytes := make([]byte, actionByteSize)
+
+	for {
+		_, err := io.ReadFull(bufReader, actionBytes)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			if err == io.ErrUnexpectedEOF {
+				return fmt.Errorf("%w: partial action at end of file", errMalformedMutationData)
+			}
+
+			return fmt.Errorf("reading mutation file: %w", err)
+		}
+
+		a := readActionFromBytes(actionBytes)
+		switch a.action {
+		case actionNone:
+			break
+		case actionAddNode:
+			mutationHandler.AddNode(a.arg1)
+		case actionAddEdge:
+			mutationHandler.AddEdge(a.arg1, a.arg2)
+		case actionRemoveEdge:
+			mutationHandler.RemoveEdge(a.arg1, a.arg2)
+		default:
+			return fmt.Errorf("%w: unknown action id %v", errMalformedMutationData, a.action)
+		}
+	}
+
+	return nil
 }
