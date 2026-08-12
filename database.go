@@ -10,3 +10,9 @@ type GraphObserver interface {
 	OnEdgeAdded(fromID, toID uint32)
 	OnEdgeRemoved(fromID, toID uint32)
 }
+
+type GraphMutater interface {
+	AddNode(nodeID uint32)
+	AddEdge(fromID, toID uint32)
+	RemoveEdge(fromID, toID uint32)
+}

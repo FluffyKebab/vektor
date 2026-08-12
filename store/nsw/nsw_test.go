@@ -20,17 +20,23 @@ func TestNSW_FindClosest(t *testing.T) {
 	vecC := makeVec(3, 30)
 	vecD := makeVec(4, 40)
 
-	nodeA := &node{v: vecA}
-	nodeB := &node{v: vecB}
-	nodeC := &node{v: vecC}
-	nodeD := &node{v: vecD}
+	store := vektor.NewInMemoryVectorStore()
+	store.Store(vecA)
+	store.Store(vecB)
+	store.Store(vecC)
+	store.Store(vecD)
+
+	nodeA := &node{id: 1}
+	nodeB := &node{id: 2}
+	nodeC := &node{id: 3}
+	nodeD := &node{id: 4}
 
 	nodeA.neighbors = []nodeDistance{{nodeB, 0}}
 	nodeB.neighbors = []nodeDistance{{nodeA, 0}, {nodeC, 0}}
 	nodeC.neighbors = []nodeDistance{{nodeC, 0}, {nodeD, 0}}
 	nodeD.neighbors = []nodeDistance{{nodeC, 0}}
 
-	nsw := NSW{entryNode: nodeA, dist: vektor.Euclidean}
+	nsw := NSW{entryNode: nodeA, dist: vektor.Euclidean, store: store}
 
 	t.Run("Finds exact match when target exists", func(t *testing.T) {
 		target := vektor.NewInMemoryVector(99, []float64{40}) // Same value as NodeD
@@ -76,9 +82,11 @@ func TestNSW_FindClosest(t *testing.T) {
 
 	t.Run("Finds closest when there is only the entry node", func(t *testing.T) {
 		vecSolo := makeVec(5, 50)
-		nodeSolo := &node{v: vecSolo}
+		nodeSolo := &node{id: 5}
+		store := vektor.NewInMemoryVectorStore()
+		store.Store(vecSolo)
 
-		soloNSW := NSW{entryNode: nodeSolo, dist: vektor.Euclidean}
+		soloNSW := NSW{entryNode: nodeSolo, dist: vektor.Euclidean, store: store}
 		target := vektor.NewInMemoryVector(99, []float64{42})
 
 		results, err := soloNSW.FindClosest(target, 3)
@@ -95,6 +103,7 @@ func TestNSW_Insert(t *testing.T) {
 			maxNeighbors:  3,
 			initNeighbors: 3,
 			dist:          vektor.Euclidean,
+			store:         vektor.NewInMemoryVectorStore(),
 		}
 
 		vec1 := makeVec(1, 10.0, 10.0)
@@ -102,7 +111,7 @@ func TestNSW_Insert(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, nsw.entryNode)
-		assert.Equal(t, 1, nsw.entryNode.v.ID())
+		assert.Equal(t, 1, int(nsw.entryNode.id))
 		assert.Empty(t, nsw.entryNode.neighbors)
 	})
 
@@ -111,6 +120,7 @@ func TestNSW_Insert(t *testing.T) {
 			maxNeighbors:  3,
 			initNeighbors: 3,
 			dist:          vektor.Euclidean,
+			store:         vektor.NewInMemoryVectorStore(),
 		}
 
 		vec1 := makeVec(1, 10.0, 10.0)
@@ -120,11 +130,11 @@ func TestNSW_Insert(t *testing.T) {
 		require.NoError(t, nsw.Insert(vec2))
 
 		assert.Len(t, nsw.entryNode.neighbors, 1)
-		assert.Equal(t, 2, nsw.entryNode.neighbors[0].node.v.ID())
+		assert.Equal(t, 2, int(nsw.entryNode.neighbors[0].node.id))
 
 		vec2Node := nsw.entryNode.neighbors[0].node
 		assert.Len(t, vec2Node.neighbors, 1)
-		assert.Equal(t, 1, vec2Node.neighbors[0].node.v.ID())
+		assert.Equal(t, 1, int(vec2Node.neighbors[0].node.id))
 	})
 
 	t.Run("Respects maxNeighbors and prunes worst edge", func(t *testing.T) {
@@ -132,6 +142,7 @@ func TestNSW_Insert(t *testing.T) {
 			maxNeighbors:  2,
 			initNeighbors: 2,
 			dist:          vektor.Euclidean,
+			store:         vektor.NewInMemoryVectorStore(),
 		}
 
 		// Insert 4 points sequentially on a 1D line: 10, 20, 30, 40
@@ -150,13 +161,13 @@ func TestNSW_Insert(t *testing.T) {
 			curr := queue[0]
 			queue = queue[1:]
 
-			if visited[curr.v.ID()] {
+			if visited[curr.id] {
 				continue
 			}
-			visited[curr.v.ID()] = true
+			visited[curr.id] = true
 
 			// Assert no node exceeded maxNeighbors
-			assert.LessOrEqual(t, len(curr.neighbors), nsw.maxNeighbors, "Node %d exceeded max neighbors", curr.v.ID())
+			assert.LessOrEqual(t, len(curr.neighbors), nsw.maxNeighbors, "Node %d exceeded max neighbors", curr.id)
 
 			for _, neighbor := range curr.neighbors {
 				queue = append(queue, neighbor.node)
@@ -189,11 +200,13 @@ func bruteForceKNN(target vektor.Vector, dataset []vektor.Vector, k int) []vekto
 	}
 	return result
 }
+
 func TestNSW_InsertAndFindClosest(t *testing.T) {
 	nsw := &NSW{
 		maxNeighbors:  32,
 		initNeighbors: 16,
 		dist:          vektor.Euclidean,
+		store:         vektor.NewInMemoryVectorStore(),
 	}
 
 	var dataset []vektor.Vector
@@ -210,8 +223,25 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 	}
 
 	// 2. Define a target
-	target := makeVec(999, 45.0, 45.0)
+	target := makeVec(999, 46.0, 46.0)
 	k := 5
+
+	visited := make(map[uint32]bool)
+	queue := []*node{nsw.entryNode}
+
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+
+		if visited[curr.id] {
+			continue
+		}
+		visited[curr.id] = true
+
+		for _, neighbor := range curr.neighbors {
+			queue = append(queue, neighbor.node)
+		}
+	}
 
 	// 3. Find the mathematical ground truth
 	expectedResults := bruteForceKNN(target, dataset, k)

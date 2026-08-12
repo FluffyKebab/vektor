@@ -3,6 +3,7 @@ package nsw
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"slices"
 )
 
@@ -58,6 +59,7 @@ func (q *priorityQueue) removeTop() {
 // removeBottom drops the highest distance element by slicing off the end.
 func (q *priorityQueue) removeBottom() {
 	if len(q.vecs) > 0 {
+		fmt.Println("worst is ", q.vecs[len(q.vecs)-1].node.id, q.vecs[len(q.vecs)-1].dist)
 		q.vecs = q.vecs[:len(q.vecs)-1]
 	}
 }
