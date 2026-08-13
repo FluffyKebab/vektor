@@ -3,6 +3,7 @@ package nsw
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/FluffyKebab/vektor"
 )
@@ -11,8 +12,14 @@ type NSW struct {
 	dist          vektor.Distance
 	graphObserver vektor.GraphObserver
 	store         vektor.VectorStore
-	entryNode     *node
-	nodes         map[uint32]*node
+
+	queuePool     sync.Pool
+	insertedPool  sync.Pool
+	distancesPool sync.Pool
+
+	entryNode *node
+	nodes     map[uint32]*node
+
 	maxNeighbors  int
 	initNeighbors int
 	efSearch      int
@@ -29,6 +36,24 @@ func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeigh
 		maxNeighbors:  maxNeighbors,
 		initNeighbors: initNeighbors,
 		efSearch:      efSearch,
+
+		queuePool: sync.Pool{
+			New: func() any {
+				return newPriorityQueue(efSearch + 1)
+			},
+		},
+
+		insertedPool: sync.Pool{
+			New: func() any {
+				return make(map[uint32]struct{}, efSearch)
+			},
+		},
+
+		distancesPool: sync.Pool{
+			New: func() any {
+				return make(map[uint32]float64, efSearch)
+			},
+		},
 	}
 }
 
@@ -51,7 +76,9 @@ func (n *NSW) Insert(vec vektor.Vector) error {
 		return nil
 	}
 
-	s := doSearch(vec, n.initNeighbors, n.efSearch, n.dist, n.entryNode, n.store)
+	s := doSearch(vec, n.initNeighbors, n)
+	defer s.cleanup(n)
+
 	if err := s.getErr(); err != nil {
 		return fmt.Errorf("finding neighbors of new vector: %w", err)
 	}
@@ -86,8 +113,12 @@ func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 		}
 	}
 
-	s := doSearch(vec, k, n.efSearch, n.dist, n.entryNode, n.store)
-	return s.getResultVectors(), s.getErr()
+	s := doSearch(vec, k, n)
+	result := s.getResultVectors()
+	err := s.getErr()
+
+	s.cleanup(n)
+	return result, err
 }
 
 func (n *NSW) addNeighbor(n1, n2 *node, dist float64) {

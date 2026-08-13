@@ -11,9 +11,9 @@ type priorityQueue struct {
 	vecs []nodeDistance
 }
 
-func newPriorityQueue() *priorityQueue {
+func newPriorityQueue(cap int) *priorityQueue {
 	return &priorityQueue{
-		vecs: make([]nodeDistance, 0),
+		vecs: make([]nodeDistance, 0, cap),
 	}
 }
 
@@ -50,8 +50,9 @@ func (q *priorityQueue) popBottom() (nodeDistance, error) {
 // removeTop drops the lowest distance element by slicing forward.
 func (q *priorityQueue) removeTop() {
 	if len(q.vecs) > 0 {
-		q.vecs[0] = nodeDistance{}
-		q.vecs = q.vecs[1:]
+		copy(q.vecs, q.vecs[1:])
+		q.vecs[len(q.vecs)-1] = nodeDistance{}
+		q.vecs = q.vecs[:len(q.vecs)-1]
 	}
 }
 
@@ -74,17 +75,4 @@ func (q *priorityQueue) insert(vd nodeDistance) {
 	})
 
 	q.vecs = slices.Insert(q.vecs, index, vd)
-}
-
-// getSlice returns a new slice containing just the Vectors, sorted by distance.
-func (q *priorityQueue) getSlice() []*node {
-	result := make([]*node, len(q.vecs))
-	for i, vd := range q.vecs {
-		result[i] = vd.node
-	}
-	return result
-}
-
-func (q *priorityQueue) getElements() []nodeDistance {
-	return q.vecs
 }

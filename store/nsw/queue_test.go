@@ -7,7 +7,7 @@ import (
 )
 
 func TestPriorityQueue_EmptyQueue(t *testing.T) {
-	q := newPriorityQueue()
+	q := newPriorityQueue(50)
 
 	assert.Equal(t, 0, q.len(), "New queue should have length 0")
 
@@ -32,14 +32,10 @@ func TestPriorityQueue_EmptyQueue(t *testing.T) {
 		q.removeTop()
 		q.removeBottom()
 	}, "Removing from empty queue should not panic")
-
-	// Test slice conversion on empty queue
-	slice := q.getSlice()
-	assert.Empty(t, slice, "getSlice on empty queue should return empty slice")
 }
 
 func TestPriorityQueue_InsertAndOrder(t *testing.T) {
-	q := newPriorityQueue()
+	q := newPriorityQueue(50)
 
 	n1 := &node{}
 	n2 := &node{}
@@ -73,7 +69,7 @@ func TestPriorityQueue_InsertAndOrder(t *testing.T) {
 }
 
 func TestPriorityQueue_Pops(t *testing.T) {
-	q := newPriorityQueue()
+	q := newPriorityQueue(50)
 
 	n1 := &node{}
 	n2 := &node{}
@@ -108,7 +104,7 @@ func TestPriorityQueue_Pops(t *testing.T) {
 }
 
 func TestPriorityQueue_Removes(t *testing.T) {
-	q := newPriorityQueue()
+	q := newPriorityQueue(50)
 
 	n1 := &node{}
 	n2 := &node{}
@@ -129,25 +125,4 @@ func TestPriorityQueue_Removes(t *testing.T) {
 	assert.Equal(t, 1, q.len())
 	bottom, _ := q.getBottom()
 	assert.Same(t, n2, bottom.node, "Bottom should now be the 2.0 node")
-}
-
-func TestPriorityQueue_GetSlice(t *testing.T) {
-	q := newPriorityQueue()
-
-	n1 := &node{}
-	n2 := &node{}
-	n3 := &node{}
-
-	// Insert randomly
-	q.insert(nodeDistance{node: n3, dist: 3.0})
-	q.insert(nodeDistance{node: n1, dist: 1.0})
-	q.insert(nodeDistance{node: n2, dist: 2.0})
-
-	slice := q.getSlice()
-
-	assert.Len(t, slice, 3)
-
-	// Assert order is correctly maintained in the resulting slice of node pointers
-	expectedSlice := []*node{n1, n2, n3}
-	assert.Equal(t, expectedSlice, slice)
 }

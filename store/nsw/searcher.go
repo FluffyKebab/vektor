@@ -12,32 +12,33 @@ type searcher struct {
 	candidateQueue  *priorityQueue
 	resultQueue     *priorityQueue
 	insertedInQueue map[uint32]struct{}
+	distances       map[uint32]float64
 	dist            vektor.Distance
 	store           vektor.VectorStore
-	distances       map[uint32]float64
 	k               int
 	ef              int
 	err             error
 }
 
-func newSearcher(targetVec vektor.Vector, k, efSearch int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
-	if efSearch < k {
+func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
+	efSearch := n.efSearch
+	if n.efSearch < k {
 		efSearch = k
 	}
 
 	s := &searcher{
 		targetVec:       targetVec,
-		candidateQueue:  newPriorityQueue(),
-		resultQueue:     newPriorityQueue(),
-		dist:            dist,
-		distances:       make(map[uint32]float64),
-		insertedInQueue: make(map[uint32]struct{}),
-		store:           store,
+		dist:            n.dist,
+		store:           n.store,
 		k:               k,
 		ef:              efSearch,
+		candidateQueue:  n.queuePool.Get().(*priorityQueue),
+		resultQueue:     n.queuePool.Get().(*priorityQueue),
+		distances:       n.distancesPool.Get().(map[uint32]float64),
+		insertedInQueue: n.insertedPool.Get().(map[uint32]struct{}),
 	}
 
-	entryVec, ok := s.store.Get(entryNode.id)
+	entryVec, ok := s.store.Get(n.entryNode.id)
 	if !ok {
 		s.err = errors.New("entry node vector is missing from vectore store")
 		return s
@@ -46,16 +47,18 @@ func newSearcher(targetVec vektor.Vector, k, efSearch int, dist vektor.Distance,
 	entryNodeDist, err := s.getDist(entryVec, targetVec)
 	if err != nil {
 		s.err = err
+		return s
 	}
 
-	s.insertInQueue(entryNode, entryNodeDist)
+	s.insertInQueue(n.entryNode, entryNodeDist)
 	return s
 }
 
-func doSearch(vec vektor.Vector, k, efSearch int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
-	s := newSearcher(vec, k, efSearch, dist, entryNode, store)
+func doSearch(vec vektor.Vector, k int, n *NSW) *searcher {
+	s := newSearcher(vec, k, n)
 	for s.next() {
 	}
+
 	return s
 }
 
@@ -158,10 +161,9 @@ func (s *searcher) getErr() error {
 
 func (s *searcher) getResultVectors() []vektor.Vector {
 	result := make([]vektor.Vector, 0, s.k)
-	queue := s.resultQueue.getSlice()
 
-	for i := 0; i < s.k && i < len(queue); i++ {
-		vec, ok := s.store.Get(queue[i].id)
+	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
+		vec, ok := s.store.Get(s.resultQueue.vecs[i].node.id) // PANIC
 		if !ok {
 			s.err = errors.New("vector in graph is missing from vector store")
 			return nil
@@ -174,5 +176,26 @@ func (s *searcher) getResultVectors() []vektor.Vector {
 }
 
 func (s *searcher) getResultNodes() []*node {
-	return s.resultQueue.getSlice()
+	result := make([]*node, 0, s.k)
+	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
+		result = append(result, s.resultQueue.vecs[i].node)
+	}
+
+	return result
+}
+
+func (s *searcher) cleanup(n *NSW) {
+	clear(s.distances)
+	n.distancesPool.Put(s.distances)
+
+	clear(s.insertedInQueue)
+	n.insertedPool.Put(s.insertedInQueue)
+
+	clear(s.candidateQueue.vecs)
+	s.candidateQueue.vecs = s.candidateQueue.vecs[:0]
+	n.queuePool.Put(s.candidateQueue)
+
+	clear(s.resultQueue.vecs)
+	s.resultQueue.vecs = s.resultQueue.vecs[:0]
+	n.queuePool.Put(s.resultQueue)
 }
