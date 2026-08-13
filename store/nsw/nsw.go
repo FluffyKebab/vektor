@@ -20,12 +20,18 @@ type NSW struct {
 var _ vektor.Database = &NSW{}
 var _ vektor.GraphMutater = &NSW{}
 
-func NewNSW(store vektor.VectorStore, dist vektor.Distance, obs vektor.GraphObserver) *NSW {
+func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors int, initNeighbors int) *NSW {
 	return &NSW{
 		dist:          dist,
-		graphObserver: obs,
 		store:         store,
+		nodes:         make(map[uint32]*node),
+		maxNeighbors:  maxNeighbors,
+		initNeighbors: initNeighbors,
 	}
+}
+
+func (n *NSW) SetGraphObserver(obs vektor.GraphObserver) {
+	n.graphObserver = obs
 }
 
 func (n *NSW) Insert(vec vektor.Vector) error {
@@ -67,6 +73,17 @@ func (n *NSW) Insert(vec vektor.Vector) error {
 }
 
 func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
+	if n.entryNode == nil {
+		if len(n.nodes) == 0 {
+			return nil, errors.New("find closest with zero vectors inserted")
+		}
+
+		for _, entryNode := range n.nodes {
+			n.entryNode = entryNode
+			break
+		}
+	}
+
 	s := doSearch(vec, k, n.dist, n.entryNode, n.store)
 	return s.getResultVectors(), s.getErr()
 }
@@ -119,6 +136,11 @@ func (n *NSW) AddNode(nodeID uint32) error {
 	}
 
 	n.nodes[nodeID] = newNode(nodeID, n.maxNeighbors)
+
+	if n.entryNode == nil {
+		n.entryNode = n.nodes[nodeID]
+	}
+
 	return nil
 }
 

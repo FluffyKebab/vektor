@@ -102,7 +102,7 @@ func (s *searcher) handleNeighbor(neighbor *node, curWorstResult nodeDistance) {
 		return
 	}
 
-	if s.resultQueue.len() <= s.k ||
+	if s.resultQueue.len() <= s.k || // TODO: change to ef
 		(curWorstResult.node != nil && dist < curWorstResult.dist) {
 
 		s.insertInQueue(neighbor, dist)

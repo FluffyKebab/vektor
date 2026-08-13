@@ -2,6 +2,7 @@ package disk
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ type Store struct {
 var _ vektor.GraphObserver = &Store{}
 
 func NewStore(
+	ctx context.Context,
 	graphMutationPath string,
 	vectorStorePath string,
 	vectorSize int,
@@ -28,12 +30,12 @@ func NewStore(
 	vectorStore vektor.VectorStore,
 	mutationHandler vektor.GraphMutater,
 ) (*Store, error) {
-	graphDataFile, err := os.Open(graphMutationPath)
+	graphDataFile, err := os.OpenFile(graphMutationPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	vectorDataFile, err := os.Open(vectorStorePath)
+	vectorDataFile, err := os.OpenFile(vectorStorePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +46,8 @@ func NewStore(
 		graphMutationWriter: graphDataFile,
 		vectorWriter:        vectorDataFile,
 	}
+
+	go s.handleClose(ctx)
 
 	err = s.readVectorsIntoStore(vectorDataFile, vectorStore)
 	if err != nil {
@@ -67,7 +71,7 @@ func (s *Store) Insert(vec vektor.Vector) error {
 		return fmt.Errorf("new vector is of size %v, must be of size %v", len(vecData), s.vectorSize)
 	}
 
-	err = s.writeVectorToDisk(vec)
+	err = s.writeVectorToDisk(vecData)
 	if err != nil {
 		return fmt.Errorf("writing vector to disk: %w", err)
 	}
@@ -80,7 +84,7 @@ func (s *Store) Insert(vec vektor.Vector) error {
 	return nil
 }
 
-func (s *Store) writeVectorToDisk(vec vektor.Vector) error {
+func (s *Store) writeVectorToDisk(vec []float64) error {
 	return binary.Write(s.vectorWriter, binary.LittleEndian, vec)
 }
 
@@ -97,7 +101,7 @@ func (s *Store) OnEdgeRemoved(fromID uint32, toID uint32) {
 }
 
 func (s *Store) OnNodeAdded(nodeID uint32) {
-	s.graphMutationWriter.Write(graphMutationAction{actionRemoveEdge, nodeID, 0, 0}.toBytes())
+	s.graphMutationWriter.Write(graphMutationAction{actionAddNode, nodeID, 0, 0}.toBytes())
 }
 
 func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) error {
@@ -156,4 +160,11 @@ func (s *Store) readMutations(f io.Reader, mutationHandler vektor.GraphMutater) 
 	}
 
 	return nil
+}
+
+func (s *Store) handleClose(ctx context.Context) {
+	<-ctx.Done()
+
+	s.graphMutationWriter.Close()
+	s.vectorWriter.Close()
 }
