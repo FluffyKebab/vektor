@@ -131,4 +131,21 @@ func BenchmarkStore_SearchRecall(b *testing.B) {
 		totalQueries := float64(b.N * querySize)
 		b.ReportMetric(totalQueries/b.Elapsed().Seconds(), "queries/sec")
 	})
+
+	// 2. The Brute Force Baseline
+	b.Run("BruteForce", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			for _, q := range queries {
+				// We throw away the result because we know recall is exactly 1.0 (100%)
+				_ = bruteForceTopK(q, dataset, k)
+			}
+		}
+
+		b.StopTimer()
+
+		totalQueries := float64(b.N * querySize)
+		b.ReportMetric(totalQueries/b.Elapsed().Seconds(), "queries/sec")
+		// Hardcode recall to 1.0 so it aligns in the benchmark output columns
+		b.ReportMetric(1.0, "recall_ratio")
+	})
 }
