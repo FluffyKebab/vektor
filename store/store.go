@@ -11,7 +11,7 @@ import (
 const (
 	defaultInitNeighbors int = 16
 	defaultMaxNeighbors      = 32
-	defaultEf                = 32
+	defaultEf                = 200
 )
 
 func New(ctx context.Context, dist vektor.Distance, vectorSize int, graphMutationPath string, vectorStorePath string) (vektor.Database, error) {
