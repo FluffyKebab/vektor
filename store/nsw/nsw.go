@@ -15,18 +15,20 @@ type NSW struct {
 	nodes         map[uint32]*node
 	maxNeighbors  int
 	initNeighbors int
+	efSearch      int
 }
 
 var _ vektor.Database = &NSW{}
 var _ vektor.GraphMutater = &NSW{}
 
-func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors int, initNeighbors int) *NSW {
+func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeighbors, efSearch int) *NSW {
 	return &NSW{
 		dist:          dist,
 		store:         store,
 		nodes:         make(map[uint32]*node),
 		maxNeighbors:  maxNeighbors,
 		initNeighbors: initNeighbors,
+		efSearch:      efSearch,
 	}
 }
 
@@ -49,7 +51,7 @@ func (n *NSW) Insert(vec vektor.Vector) error {
 		return nil
 	}
 
-	s := doSearch(vec, n.initNeighbors, n.dist, n.entryNode, n.store)
+	s := doSearch(vec, n.initNeighbors, n.efSearch, n.dist, n.entryNode, n.store)
 	if err := s.getErr(); err != nil {
 		return fmt.Errorf("finding neighbors of new vector: %w", err)
 	}
@@ -84,7 +86,7 @@ func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 		}
 	}
 
-	s := doSearch(vec, k, n.dist, n.entryNode, n.store)
+	s := doSearch(vec, k, n.efSearch, n.dist, n.entryNode, n.store)
 	return s.getResultVectors(), s.getErr()
 }
 

@@ -110,7 +110,6 @@ func TestStore_ExtensiveRebootIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to initialize first DB instance")
 
 	// Insert 500 random vectors to build a complex graph topology
-	t.Log("Building graph with 500 random vectors...")
 	for i := uint32(1); i <= 500; i++ {
 		vec := generateRandomVector(i, vectorSize, r)
 		err := db1.Insert(vec)
@@ -118,7 +117,6 @@ func TestStore_ExtensiveRebootIntegration(t *testing.T) {
 	}
 
 	// Generate 100 random search queries and record their results
-	t.Log("Running 100 pre-reboot baseline searches...")
 	k := 5
 	queries := make([]vektor.Vector, 100)
 	preRebootResults := make([][]uint32, 100)
@@ -147,7 +145,6 @@ func TestStore_ExtensiveRebootIntegration(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// --- PHASE 2: REBOOT AND VERIFY ---
-	t.Log("Rebooting database from disk...")
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 
@@ -155,7 +152,6 @@ func TestStore_ExtensiveRebootIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to reboot DB from disk")
 
 	// Run the exact same 100 queries against the rebooted graph
-	t.Log("Verifying 100 post-reboot searches against baseline...")
 	for i := 0; i < 100; i++ {
 		queryVec := queries[i]
 

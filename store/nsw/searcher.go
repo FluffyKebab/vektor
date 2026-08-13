@@ -16,10 +16,15 @@ type searcher struct {
 	store           vektor.VectorStore
 	distances       map[uint32]float64
 	k               int
+	ef              int
 	err             error
 }
 
-func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
+func newSearcher(targetVec vektor.Vector, k, efSearch int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
+	if efSearch < k {
+		efSearch = k
+	}
+
 	s := &searcher{
 		targetVec:       targetVec,
 		candidateQueue:  newPriorityQueue(),
@@ -29,6 +34,7 @@ func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode
 		insertedInQueue: make(map[uint32]struct{}),
 		store:           store,
 		k:               k,
+		ef:              efSearch,
 	}
 
 	entryVec, ok := s.store.Get(entryNode.id)
@@ -46,8 +52,8 @@ func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode
 	return s
 }
 
-func doSearch(vec vektor.Vector, k int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
-	s := newSearcher(vec, k, dist, entryNode, store)
+func doSearch(vec vektor.Vector, k, efSearch int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
+	s := newSearcher(vec, k, efSearch, dist, entryNode, store)
 	for s.next() {
 	}
 	return s
@@ -82,7 +88,6 @@ func (s *searcher) next() bool {
 	}
 
 	for _, n := range curBestCandidate.node.neighbors {
-
 		s.handleNeighbor(n.node, curWorstResult)
 	}
 
@@ -102,7 +107,7 @@ func (s *searcher) handleNeighbor(neighbor *node, curWorstResult nodeDistance) {
 		return
 	}
 
-	if s.resultQueue.len() <= s.k || // TODO: change to ef
+	if s.resultQueue.len() <= s.ef ||
 		(curWorstResult.node != nil && dist < curWorstResult.dist) {
 
 		s.insertInQueue(neighbor, dist)
@@ -118,7 +123,7 @@ func (s *searcher) insertInQueue(n *node, dist float64) {
 	elem := nodeDistance{n, dist}
 
 	s.resultQueue.insert(elem)
-	if s.resultQueue.len() > s.k {
+	if s.resultQueue.len() > s.ef {
 		s.resultQueue.removeBottom()
 	}
 
@@ -152,15 +157,17 @@ func (s *searcher) getErr() error {
 }
 
 func (s *searcher) getResultVectors() []vektor.Vector {
-	result := make([]vektor.Vector, s.resultQueue.len())
-	for i, vd := range s.resultQueue.getSlice() {
-		vec, ok := s.store.Get(vd.id)
+	result := make([]vektor.Vector, 0, s.k)
+	queue := s.resultQueue.getSlice()
+
+	for i := 0; i < s.k && i < len(queue); i++ {
+		vec, ok := s.store.Get(queue[i].id)
 		if !ok {
 			s.err = errors.New("vector in graph is missing from vector store")
 			return nil
 		}
 
-		result[i] = vec
+		result = append(result, vec)
 	}
 
 	return result

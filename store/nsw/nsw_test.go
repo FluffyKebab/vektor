@@ -99,7 +99,7 @@ func TestNSW_FindClosest(t *testing.T) {
 
 func TestNSW_Insert(t *testing.T) {
 	t.Run("Sets entry node on first insert", func(t *testing.T) {
-		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 3, 3)
+		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 3, 3, 3)
 
 		vec1 := makeVec(1, 10.0, 10.0)
 		err := nsw.Insert(vec1)
@@ -111,7 +111,7 @@ func TestNSW_Insert(t *testing.T) {
 	})
 
 	t.Run("Creates bi-directional edges on second insert", func(t *testing.T) {
-		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 3, 3)
+		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 3, 3, 3)
 
 		vec1 := makeVec(1, 10.0, 10.0)
 		vec2 := makeVec(2, 20.0, 20.0)
@@ -128,7 +128,7 @@ func TestNSW_Insert(t *testing.T) {
 	})
 
 	t.Run("Respects maxNeighbors and prunes worst edge", func(t *testing.T) {
-		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 2, 2)
+		nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 2, 2, 2)
 
 		// Insert 4 points sequentially on a 1D line: 10, 20, 30, 40
 		// Because maxNeighbors is 2, the nodes in the middle must drop their longest
@@ -187,7 +187,7 @@ func bruteForceKNN(target vektor.Vector, dataset []vektor.Vector, k int) []vekto
 }
 
 func TestNSW_InsertAndFindClosest(t *testing.T) {
-	nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 10, 5)
+	nsw := New(vektor.NewInMemoryVectorStore(), vektor.Euclidean, 10, 5, 10)
 
 	var dataset []vektor.Vector
 
