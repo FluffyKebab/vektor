@@ -267,3 +267,131 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 	assert.ElementsMatch(t, expectedIDs, actualIDs,
 		"NSW Search did not match brute-force k-NN ground truth")
 }
+
+func TestNSW_AddNode(t *testing.T) {
+	t.Run("Successfully adds a new node", func(t *testing.T) {
+		nsw := &NSW{
+			nodes:        make(map[uint32]*node),
+			maxNeighbors: 16,
+		}
+
+		err := nsw.AddNode(1)
+		require.NoError(t, err)
+
+		// Verify it was added to the map
+		addedNode, exists := nsw.nodes[1]
+		require.True(t, exists)
+		require.NotNil(t, addedNode)
+	})
+
+	t.Run("Errors when adding an existing node", func(t *testing.T) {
+		nsw := &NSW{
+			nodes:        make(map[uint32]*node),
+			maxNeighbors: 16,
+		}
+
+		// Add it the first time
+		require.NoError(t, nsw.AddNode(1))
+
+		// Try to add it again
+		err := nsw.AddNode(1)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "already exist in graph")
+	})
+}
+
+func TestNSW_AddEdge(t *testing.T) {
+	t.Run("Successfully adds an edge with distance", func(t *testing.T) {
+		nsw := &NSW{
+			nodes: make(map[uint32]*node),
+		}
+
+		// Setup nodes directly
+		n1 := &node{id: 1, neighbors: make([]nodeDistance, 0)}
+		n2 := &node{id: 2, neighbors: make([]nodeDistance, 0)}
+		nsw.nodes[1] = n1
+		nsw.nodes[2] = n2
+
+		err := nsw.AddEdge(1, 2, 5.42)
+		require.NoError(t, err)
+
+		// Verify neighbor was appended correctly to n1
+		require.Len(t, n1.neighbors, 1)
+		assert.Equal(t, uint32(2), n1.neighbors[0].node.id)
+		assert.Equal(t, 5.42, n1.neighbors[0].dist)
+
+		// Verify n2 was NOT modified (directed edge behavior)
+		assert.Empty(t, n2.neighbors)
+	})
+
+	t.Run("Errors when fromID is missing", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+		nsw.nodes[2] = &node{id: 2} // Only toID exists
+
+		err := nsw.AddEdge(1, 2, 5.42)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "from_node 1 does not exist")
+	})
+
+	t.Run("Errors when toID is missing", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+		nsw.nodes[1] = &node{id: 1} // Only fromID exists
+
+		err := nsw.AddEdge(1, 2, 5.42)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "to_node 2 does not exist")
+	})
+}
+
+func TestNSW_RemoveEdge(t *testing.T) {
+	t.Run("Successfully removes an existing edge", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+
+		n1 := &node{id: 1}
+		n2 := &node{id: 2}
+		nsw.nodes[1] = n1
+		nsw.nodes[2] = n2
+
+		// Manually link them
+		n1.neighbors = []nodeDistance{{node: n2, dist: 3.14}}
+
+		err := nsw.RemoveEdge(1, 2)
+		require.NoError(t, err)
+
+		// Assuming n1.removeNeighbor either zeros out or shrinks the slice,
+		// we verify the length changed (adjust assertion if your remove logic differs)
+		assert.Empty(t, n1.neighbors)
+	})
+
+	t.Run("Errors when fromID is missing", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+		nsw.nodes[2] = &node{id: 2}
+
+		err := nsw.RemoveEdge(1, 2)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "from_node 1 does not exist")
+	})
+
+	t.Run("Errors when toID is missing", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+		nsw.nodes[1] = &node{id: 1}
+
+		err := nsw.RemoveEdge(1, 2)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "to_node 2 does not exist")
+	})
+
+	t.Run("Errors when edge does not exist", func(t *testing.T) {
+		nsw := &NSW{nodes: make(map[uint32]*node)}
+
+		n1 := &node{id: 1}
+		n2 := &node{id: 2}
+		nsw.nodes[1] = n1
+		nsw.nodes[2] = n2
+
+		// Nodes exist, but n1 has no neighbors
+		err := nsw.RemoveEdge(1, 2)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "from_id 1 does not have neighbor 2")
+	})
+}

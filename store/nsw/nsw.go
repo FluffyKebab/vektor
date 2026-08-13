@@ -7,30 +7,18 @@ import (
 	"github.com/FluffyKebab/vektor"
 )
 
-type node struct {
-	id        uint32
-	neighbors []nodeDistance
-}
-
-type nodeDistance struct {
-	node *node
-	dist float64
-}
-
-func newNode(v vektor.Vector, maxN int) *node {
-	return &node{id: v.ID(), neighbors: make([]nodeDistance, 0, maxN+1)}
-}
-
 type NSW struct {
 	dist          vektor.Distance
 	graphObserver vektor.GraphObserver
 	store         vektor.VectorStore
 	entryNode     *node
+	nodes         map[uint32]*node
 	maxNeighbors  int
 	initNeighbors int
 }
 
 var _ vektor.Database = &NSW{}
+var _ vektor.GraphMutater = &NSW{}
 
 func NewNSW(store vektor.VectorStore, dist vektor.Distance, obs vektor.GraphObserver) *NSW {
 	return &NSW{
@@ -41,13 +29,14 @@ func NewNSW(store vektor.VectorStore, dist vektor.Distance, obs vektor.GraphObse
 }
 
 func (n *NSW) Insert(vec vektor.Vector) error {
-	node := newNode(vec, n.maxNeighbors)
+	node := newNode(vec.ID(), n.maxNeighbors)
 
 	if n.graphObserver != nil {
 		n.graphObserver.OnNodeAdded(vec.ID())
 	}
 
 	n.store.Store(vec)
+	n.nodes[vec.ID()] = node
 
 	if n.entryNode == nil {
 		n.entryNode = node
@@ -84,7 +73,7 @@ func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 
 func (n *NSW) addNeighbor(n1, n2 *node, dist float64) {
 	if n.graphObserver != nil {
-		n.graphObserver.OnEdgeAdded(n1.id, n2.id)
+		n.graphObserver.OnEdgeAdded(n1.id, n2.id, dist)
 	}
 
 	n1.neighbors = append(n1.neighbors, nodeDistance{n2, dist})
@@ -99,185 +88,56 @@ func (n *NSW) removeWorstNeighbor(n1 *node) {
 		return
 	}
 
-	worstIdx := 0
-	maxDist := n1.neighbors[0].dist
-	for i := 1; i < len(n1.neighbors); i++ {
-		if n1.neighbors[i].dist > maxDist {
-			maxDist = n1.neighbors[i].dist
-			worstIdx = i
-		}
-	}
+	worstIdx := n1.neighborWithHighestDistance()
 	worstNeighborID := n1.neighbors[worstIdx].node.id
 
 	if n.graphObserver != nil {
 		n.graphObserver.OnEdgeRemoved(n1.id, worstNeighborID)
 	}
 
-	lastIdx := len(n1.neighbors) - 1
-	n1.neighbors[worstIdx] = n1.neighbors[lastIdx]
-	n1.neighbors[lastIdx] = nodeDistance{}
-	n1.neighbors = n1.neighbors[:lastIdx]
+	n1.removeNeighbor(worstIdx)
 }
 
-type searcher struct {
-	targetVec       vektor.Vector
-	candidateQueue  *priorityQueue
-	resultQueue     *priorityQueue
-	insertedInQueue map[uint32]struct{}
-	dist            vektor.Distance
-	store           vektor.VectorStore
-	distances       map[uint32]float64
-	k               int
-	err             error
-}
-
-func newSearcher(targetVec vektor.Vector, k int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
-	s := &searcher{
-		targetVec:       targetVec,
-		candidateQueue:  newPriorityQueue(),
-		resultQueue:     newPriorityQueue(),
-		dist:            dist,
-		distances:       make(map[uint32]float64),
-		insertedInQueue: make(map[uint32]struct{}),
-		store:           store,
-		k:               k,
-	}
-
-	entryVec, ok := s.store.Get(entryNode.id)
+func (n *NSW) AddEdge(fromID uint32, toID uint32, dist float64) error {
+	n1, ok := n.nodes[fromID]
 	if !ok {
-		s.err = errors.New("entry node vector is missing from vectore store")
-		return s
+		return fmt.Errorf("adding edge: from_node %d does not exist in graph", fromID)
 	}
 
-	entryNodeDist, err := s.getDist(entryVec, targetVec)
-	if err != nil {
-		s.err = err
-	}
-
-	s.insertInQueue(entryNode, entryNodeDist)
-	return s
-}
-
-func doSearch(vec vektor.Vector, k int, dist vektor.Distance, entryNode *node, store vektor.VectorStore) *searcher {
-	s := newSearcher(vec, k, dist, entryNode, store)
-	for s.next() {
-	}
-	return s
-}
-
-func (s *searcher) next() bool {
-	if s.err != nil {
-		return false
-	}
-
-	if s.candidateQueue.len() == 0 {
-		return false
-	}
-
-	curBestCandidate, err := s.candidateQueue.popTop()
-	if err != nil {
-		s.err = err
-		return false
-	}
-
-	var curWorstResult nodeDistance
-	if s.resultQueue.len() != 0 {
-		curWorstResult, err = s.resultQueue.getBottom()
-		if err != nil {
-			s.err = err
-			return false
-		}
-
-		if curWorstResult.dist < curBestCandidate.dist {
-			return false
-		}
-	}
-
-	for _, n := range curBestCandidate.node.neighbors {
-
-		s.handleNeighbor(n.node, curWorstResult)
-	}
-
-	return true
-}
-
-func (s *searcher) handleNeighbor(neighbor *node, curWorstResult nodeDistance) {
-	nVec, ok := s.store.Get(neighbor.id)
+	n2, ok := n.nodes[toID]
 	if !ok {
-		s.err = errors.New("vector in graph is missing from vectore store")
-		return
+		return fmt.Errorf("adding edge: to_node %d does not exist in graph", toID)
 	}
 
-	dist, err := s.getDist(nVec, s.targetVec)
-	if err != nil {
-		s.err = err
-		return
-	}
-
-	if s.resultQueue.len() <= s.k ||
-		(curWorstResult.node != nil && dist < curWorstResult.dist) {
-
-		s.insertInQueue(neighbor, dist)
-	}
+	n1.neighbors = append(n1.neighbors, nodeDistance{n2, dist})
+	return nil
 }
 
-func (s *searcher) insertInQueue(n *node, dist float64) {
-	if _, isInserted := s.insertedInQueue[n.id]; isInserted {
-		return
-	}
-	s.insertedInQueue[n.id] = struct{}{}
-
-	elem := nodeDistance{n, dist}
-
-	s.resultQueue.insert(elem)
-	if s.resultQueue.len() > s.k {
-		s.resultQueue.removeBottom()
+func (n *NSW) AddNode(nodeID uint32) error {
+	if _, ok := n.nodes[nodeID]; ok {
+		return fmt.Errorf("adding node: %d already exist in graph", nodeID)
 	}
 
-	s.candidateQueue.insert(elem)
+	n.nodes[nodeID] = newNode(nodeID, n.maxNeighbors)
+	return nil
 }
 
-func (s *searcher) getDist(curVec, targetVec vektor.Vector) (float64, error) {
-	if d, found := s.distances[curVec.ID()]; found {
-		return d, nil
+func (n *NSW) RemoveEdge(fromID uint32, toID uint32) error {
+	n1, ok := n.nodes[fromID]
+	if !ok {
+		return fmt.Errorf("removing edge: from_node %d does not exist in graph", fromID)
 	}
 
-	d, err := s.dist(curVec, targetVec)
-	if err != nil {
-		return 0, err
+	n2, ok := n.nodes[toID]
+	if !ok {
+		return fmt.Errorf("removing edge: to_node %d does not exist in graph", toID)
 	}
 
-	s.distances[curVec.ID()] = d
-	return d, nil
-}
-
-func (s *searcher) getErr() error {
-	if s.resultQueue.len() == 0 {
-		if s.err != nil {
-			s.err = fmt.Errorf("no results found: %w", s.err)
-		} else {
-			s.err = errors.New("no results found")
-		}
+	n2IdxInN1 := n1.findNeighborIndex(n2.id)
+	if n2IdxInN1 == -1 {
+		return fmt.Errorf("removing edge: from_id %d does not have neighbor %d", fromID, toID)
 	}
 
-	return s.err
-}
-
-func (s *searcher) getResultVectors() []vektor.Vector {
-	result := make([]vektor.Vector, s.resultQueue.len())
-	for i, vd := range s.resultQueue.getSlice() {
-		vec, ok := s.store.Get(vd.id)
-		if !ok {
-			s.err = errors.New("vector in graph is missing from vector store")
-			return nil
-		}
-
-		result[i] = vec
-	}
-
-	return result
-}
-
-func (s *searcher) getResultNodes() []*node {
-	return s.resultQueue.getSlice()
+	n1.removeNeighbor(n2IdxInN1)
+	return nil
 }

@@ -45,13 +45,17 @@ func NewStore(
 		vectorWriter:        vectorDataFile,
 	}
 
+	err = s.readVectorsIntoStore(vectorDataFile, vectorStore)
+	if err != nil {
+		return s, err
+	}
+
 	err = s.readMutations(graphDataFile, mutationHandler)
 	if err != nil {
 		return s, err
 	}
 
-	err = s.readVectorsIntoStore(vectorDataFile, vectorStore)
-	return s, err
+	return s, nil
 }
 
 func (s *Store) Insert(vec vektor.Vector) error {
@@ -84,16 +88,16 @@ func (s *Store) FindClosest(vec vektor.Vector, n int) ([]vektor.Vector, error) {
 	return s.ramStorage.FindClosest(vec, n)
 }
 
-func (s *Store) OnEdgeAdded(fromID uint32, toID uint32) { // TODO: handle errors
-	s.graphMutationWriter.Write(newGraphMutationAction(actionAddEdge, fromID, toID).toBytes())
+func (s *Store) OnEdgeAdded(fromID uint32, toID uint32, dist float64) { // TODO: handle errors
+	s.graphMutationWriter.Write(graphMutationAction{actionAddEdge, fromID, toID, dist}.toBytes())
 }
 
 func (s *Store) OnEdgeRemoved(fromID uint32, toID uint32) {
-	s.graphMutationWriter.Write(newGraphMutationAction(actionAddEdge, fromID, toID).toBytes())
+	s.graphMutationWriter.Write(graphMutationAction{actionRemoveEdge, fromID, toID, 0}.toBytes())
 }
 
 func (s *Store) OnNodeAdded(nodeID uint32) {
-	s.graphMutationWriter.Write(newGraphMutationAction(actionAddEdge, nodeID, 0).toBytes())
+	s.graphMutationWriter.Write(graphMutationAction{actionRemoveEdge, nodeID, 0, 0}.toBytes())
 }
 
 func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) error {
@@ -143,7 +147,7 @@ func (s *Store) readMutations(f io.Reader, mutationHandler vektor.GraphMutater) 
 		case actionAddNode:
 			mutationHandler.AddNode(a.arg1)
 		case actionAddEdge:
-			mutationHandler.AddEdge(a.arg1, a.arg2)
+			mutationHandler.AddEdge(a.arg1, a.arg2, a.dist)
 		case actionRemoveEdge:
 			mutationHandler.RemoveEdge(a.arg1, a.arg2)
 		default:
