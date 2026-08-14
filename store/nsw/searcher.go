@@ -8,17 +8,16 @@ import (
 )
 
 type searcher struct {
-	targetVec       []float64
-	candidateQueue  *candidateQueue
-	resultQueue     *priorityQueue
-	insertedInQueue map[uint32]struct{}
-	distances       map[uint32]float64
-	dist            vektor.Distance
-	vectors         vektor.VectorStore
-	nodes           *nodeStore
-	k               int
-	ef              int
-	err             error
+	targetVec      []float64
+	candidateQueue *candidateQueue
+	resultQueue    *priorityQueue
+	visited        *visitedSet
+	dist           vektor.Distance
+	vectors        vektor.VectorStore
+	nodes          *nodeStore
+	k              int
+	ef             int
+	err            error
 }
 
 func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
@@ -30,17 +29,17 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 	vecData, err := targetVec.Read()
 
 	s := &searcher{
-		targetVec:       vecData,
-		dist:            n.dist,
-		vectors:         n.vectors,
-		nodes:           n.nodes,
-		k:               k,
-		ef:              efSearch,
-		candidateQueue:  n.candidateQueuePool.Get().(*candidateQueue),
-		resultQueue:     n.resultQueuePool.Get().(*priorityQueue),
-		distances:       n.distancesPool.Get().(map[uint32]float64),
-		insertedInQueue: n.insertedPool.Get().(map[uint32]struct{}),
+		targetVec:      vecData,
+		dist:           n.dist,
+		vectors:        n.vectors,
+		nodes:          n.nodes,
+		k:              k,
+		ef:             efSearch,
+		candidateQueue: n.candidateQueuePool.Get().(*candidateQueue),
+		resultQueue:    n.resultQueuePool.Get().(*priorityQueue),
+		visited:        n.visited.Get().(*visitedSet),
 	}
+	s.visited.update(s.nodes.numNodes())
 
 	if err != nil {
 		s.err = err
@@ -64,7 +63,7 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 		s.err = err
 		return s
 	}
-	s.insertedInQueue[n.entryNodeID] = struct{}{}
+	s.visited.visit(n.entryNodeID)
 
 	s.insertInQueue(entryNode, entryNodeDist)
 	return s
@@ -128,10 +127,10 @@ func (s *searcher) next() bool {
 }
 
 func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult *nodeDistance) {
-	if _, isInserted := s.insertedInQueue[neighborID]; isInserted {
+	if s.visited.isVisited(neighborID) {
 		return
 	}
-	s.insertedInQueue[neighborID] = struct{}{}
+	s.visited.visit(neighborID)
 
 	nNode, ok := s.nodes.get(neighborID)
 	if !ok {
@@ -215,11 +214,7 @@ func (s *searcher) getResultNodeDist() []nodeDistance {
 }
 
 func (s *searcher) cleanup(n *NSW) {
-	clear(s.distances)
-	n.distancesPool.Put(s.distances)
-
-	clear(s.insertedInQueue)
-	n.insertedPool.Put(s.insertedInQueue)
+	n.visited.Put(s.visited)
 
 	clear(s.candidateQueue.vecs)
 	s.candidateQueue.vecs = s.candidateQueue.vecs[:0]

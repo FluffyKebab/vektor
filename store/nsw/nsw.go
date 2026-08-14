@@ -15,8 +15,7 @@ type NSW struct {
 
 	resultQueuePool    sync.Pool
 	candidateQueuePool sync.Pool
-	insertedPool       sync.Pool
-	distancesPool      sync.Pool
+	visited            sync.Pool
 
 	entryNodeID uint32
 	nodes       *nodeStore
@@ -31,7 +30,7 @@ var _ vektor.Database = &NSW{}
 var _ vektor.GraphMutater = &NSW{}
 
 func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeighbors, efSearch int) *NSW {
-	return &NSW{
+	n := &NSW{
 		dist:          dist,
 		vectors:       store,
 		nodes:         newNodeStore(maxNeighbors + 1),
@@ -48,22 +47,16 @@ func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeigh
 
 		candidateQueuePool: sync.Pool{
 			New: func() any {
-				return newCandidateQueue(efSearch * 2)
-			},
-		},
-
-		insertedPool: sync.Pool{
-			New: func() any {
-				return make(map[uint32]struct{}, efSearch)
-			},
-		},
-
-		distancesPool: sync.Pool{
-			New: func() any {
-				return make(map[uint32]float64, efSearch)
+				return newCandidateQueue(efSearch*2 + 1)
 			},
 		},
 	}
+
+	n.visited.New = func() any {
+		return newVisitedSet(n.nodes.numNodes())
+	}
+
+	return n
 }
 
 func (n *NSW) SetGraphObserver(obs vektor.GraphObserver) {
