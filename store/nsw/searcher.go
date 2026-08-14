@@ -20,10 +20,9 @@ type searcher struct {
 	err            error
 }
 
-func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
-	efSearch := n.efSearch
-	if n.efSearch < k {
-		efSearch = k
+func newSearcher(targetVec vektor.Vector, k, ef int, n *NSW) *searcher {
+	if ef < k {
+		ef = k
 	}
 
 	vecData, err := targetVec.Read()
@@ -34,7 +33,7 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 		vectors:        n.vectors,
 		nodes:          n.nodes,
 		k:              k,
-		ef:             efSearch,
+		ef:             ef,
 		candidateQueue: n.candidateQueuePool.Get().(*candidateQueue),
 		resultQueue:    n.resultQueuePool.Get().(*priorityQueue),
 		visited:        n.visited.Get().(*visitedSet),
@@ -69,8 +68,8 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 	return s
 }
 
-func doSearch(vec vektor.Vector, k int, n *NSW) *searcher {
-	s := newSearcher(vec, k, n)
+func doSearch(vec vektor.Vector, k, ef int, n *NSW) *searcher {
+	s := newSearcher(vec, k, ef, n)
 	for s.next() {
 	}
 

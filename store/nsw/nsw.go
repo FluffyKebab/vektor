@@ -20,24 +20,26 @@ type NSW struct {
 	entryNodeID uint32
 	nodes       *nodeStore
 
-	maxNeighbors  int
-	initNeighbors int
-	efSearch      int
-	curID         uint32
+	maxNeighbors   int
+	initNeighbors  int
+	efSearch       int
+	efConstruction int
+	curID          uint32
 }
 
 var _ vektor.Database = &NSW{}
 var _ vektor.GraphMutater = &NSW{}
 
-func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeighbors, efSearch int) *NSW {
+func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeighbors, efSearch, efConstruction int) *NSW {
 	n := &NSW{
-		dist:          dist,
-		vectors:       store,
-		nodes:         newNodeStore(maxNeighbors + 1),
-		maxNeighbors:  maxNeighbors,
-		initNeighbors: initNeighbors,
-		efSearch:      efSearch,
-		entryNodeID:   emptyNodeID,
+		dist:           dist,
+		vectors:        store,
+		nodes:          newNodeStore(maxNeighbors + 1),
+		maxNeighbors:   maxNeighbors,
+		initNeighbors:  initNeighbors,
+		efSearch:       efSearch,
+		efConstruction: efConstruction,
+		entryNodeID:    emptyNodeID,
 
 		resultQueuePool: sync.Pool{
 			New: func() any {
@@ -74,7 +76,7 @@ func (n *NSW) Insert(vec vektor.Vector) (vektor.Vector, error) {
 		return nil, nil
 	}
 
-	s := doSearch(vec, n.initNeighbors, n)
+	s := doSearch(vec, n.initNeighbors, n.efConstruction, n)
 	defer s.cleanup(n)
 	if err := s.getErr(); err != nil {
 		return nil, fmt.Errorf("finding neighbors of new vector: %w", err)
@@ -102,7 +104,7 @@ func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
 		n.entryNodeID = entryNode.nodeStoreID
 	}
 
-	s := doSearch(vec, k, n)
+	s := doSearch(vec, k, n.efSearch, n)
 	result := s.getResultVectors()
 	err := s.getErr()
 	s.cleanup(n)

@@ -9,15 +9,16 @@ import (
 )
 
 const (
-	defaultInitNeighbors int = 16
-	defaultMaxNeighbors      = 32
-	defaultEf                = 200
+	defaultInitNeighbors  int = 16
+	defaultMaxNeighbors       = 32
+	defaultSearchEf           = 100
+	defaultConstructionEf     = 200
 )
 
 func New(ctx context.Context, dist vektor.Distance, vectorSize int, graphMutationPath string, vectorStorePath string) (vektor.Database, error) {
 	vectorStore := vektor.NewInMemoryVectorStore(vectorSize)
 
-	graphStore := nsw.New(vectorStore, dist, defaultMaxNeighbors, defaultInitNeighbors, defaultEf)
+	graphStore := nsw.New(vectorStore, dist, defaultMaxNeighbors, defaultInitNeighbors, defaultSearchEf, defaultConstructionEf)
 	diskStore, err := disk.NewStore(ctx, graphMutationPath, vectorStorePath, vectorSize, graphStore, vectorStore, graphStore)
 	if err != nil {
 		return nil, err
