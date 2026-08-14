@@ -14,9 +14,9 @@ import (
 func generateDataset(size int, dims int, r *rand.Rand) []vektor.Vector {
 	dataset := make([]vektor.Vector, size)
 	for i := 0; i < size; i++ {
-		coords := make([]float64, dims)
+		coords := make([]float32, dims)
 		for d := 0; d < dims; d++ {
-			coords[d] = r.Float64() * 100.0
+			coords[d] = r.Float32() * 100.0
 		}
 
 		dataset[i] = vektor.NewInMemoryVector(uint32(i), coords)

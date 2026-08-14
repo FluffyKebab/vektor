@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeVec(id uint32, coords ...float64) vektor.InMemoryVector {
+func makeVec(id uint32, coords ...float32) vektor.InMemoryVector {
 	return vektor.NewInMemoryVector(id, coords)
 }
 
@@ -20,13 +20,13 @@ func TestNSW_FindClosest(t *testing.T) {
 	// Assuming vector dimension is 1 for simplicity of this test
 	vectors := vektor.NewInMemoryVectorStore(1)
 
-	vIdA, err := vectors.Store([]float64{10})
+	vIdA, err := vectors.Store([]float32{10})
 	require.NoError(t, err)
-	vIdB, err := vectors.Store([]float64{20})
+	vIdB, err := vectors.Store([]float32{20})
 	require.NoError(t, err)
-	vIdC, err := vectors.Store([]float64{30})
+	vIdC, err := vectors.Store([]float32{30})
 	require.NoError(t, err)
-	vIdD, err := vectors.Store([]float64{40})
+	vIdD, err := vectors.Store([]float32{40})
 	require.NoError(t, err)
 
 	// 2. Setup NSW and Node Store
@@ -55,7 +55,7 @@ func TestNSW_FindClosest(t *testing.T) {
 	require.NoError(t, nsw.AddEdge(nodeD.nodeStoreID, nodeC.nodeStoreID, 10.0))
 
 	t.Run("Finds exact match when target exists", func(t *testing.T) {
-		target := vektor.NewInMemoryVector(99, []float64{40}) // Same value as NodeD
+		target := vektor.NewInMemoryVector(99, []float32{40}) // Same value as NodeD
 
 		results, err := nsw.FindClosest(target, 1)
 		require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestNSW_FindClosest(t *testing.T) {
 	})
 
 	t.Run("Finds k nearest neighbors correctly ordered", func(t *testing.T) {
-		target := vektor.NewInMemoryVector(99, []float64{32})
+		target := vektor.NewInMemoryVector(99, []float32{32})
 		// Distances: C(30)=2, D(40)=8, B(20)=12
 
 		// Looking for top 3 nearest neighbors
@@ -86,13 +86,13 @@ func TestNSW_FindClosest(t *testing.T) {
 	})
 
 	t.Run("Distance cache (visited set) prevents redundant calculations", func(t *testing.T) {
-		target := vektor.NewInMemoryVector(99, []float64{25}) // Between B and C
+		target := vektor.NewInMemoryVector(99, []float32{25}) // Between B and C
 
 		callCount := 0
 		originalDist := nsw.dist
 
 		// Intercept the distance function to count calls
-		nsw.dist = func(a, b []float64) (float32, error) {
+		nsw.dist = func(a, b []float32) (float32, error) {
 			callCount++
 			return originalDist(a, b)
 		}
@@ -112,12 +112,12 @@ func TestNSW_FindClosest(t *testing.T) {
 		soloNSW := New(soloStore, vektor.Euclidean, 16, 16, 200)
 
 		// Manually inject the entry node
-		vIdSolo, err := soloStore.Store([]float64{50})
+		vIdSolo, err := soloStore.Store([]float32{50})
 		require.NoError(t, err)
 		nodeSolo := soloNSW.nodes.newNode(vIdSolo)
 		soloNSW.entryNodeID = nodeSolo.nodeStoreID
 
-		target := vektor.NewInMemoryVector(99, []float64{42})
+		target := vektor.NewInMemoryVector(99, []float32{42})
 
 		results, err := soloNSW.FindClosest(target, 3)
 
@@ -245,8 +245,8 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 
 	// 1. Build a graph of 100 vectors in a 2D spatial grid (10x10)
 	var id uint32
-	for x := 0.0; x < 100.0; x += 10.0 {
-		for y := 0.0; y < 100.0; y += 10.0 {
+	for x := float32(0.0); x < 100.0; x += 10.0 {
+		for y := float32(0.0); y < 100.0; y += 10.0 {
 			vec := makeVec(id, x, y)
 			dataset = append(dataset, vec)
 

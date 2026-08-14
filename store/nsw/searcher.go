@@ -8,7 +8,7 @@ import (
 )
 
 type searcher struct {
-	targetVec      []float64
+	targetVec      []float32
 	candidateQueue *candidateQueue
 	resultQueue    *priorityQueue
 	visited        *visitedSet

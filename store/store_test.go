@@ -30,13 +30,13 @@ func TestStore_RebootIntegration(t *testing.T) {
 
 	// Insert 200 vectors in a straight line
 	for i := uint32(0); i < 200; i++ {
-		vec := vektor.NewInMemoryVector(i, []float64{float64(i), float64(i * 2)})
+		vec := vektor.NewInMemoryVector(i, []float32{float32(i), float32(i * 2)})
 		_, err := db1.Insert(vec)
 		require.NoError(t, err, "Failed to insert vector ID %d", i)
 	}
 
 	// Define a target we want to search for
-	target := vektor.NewInMemoryVector(999, []float64{50.4, 100.8})
+	target := vektor.NewInMemoryVector(999, []float32{50.4, 100.8})
 
 	// Search the in-memory graph before shutdown
 	results1, err := db1.FindClosest(target, 5)
@@ -72,7 +72,7 @@ func TestStore_RebootIntegration(t *testing.T) {
 
 	// --- PHASE 3: LIVE MUTATION AFTER REBOOT ---
 	// Prove the database is fully functional after restoring from disk
-	vec201 := vektor.NewInMemoryVector(201, []float64{201.0, 402.0})
+	vec201 := vektor.NewInMemoryVector(201, []float32{201.0, 402.0})
 	_, err = db2.Insert(vec201)
 	require.NoError(t, err, "Failed to insert new vector after reboot")
 
@@ -83,9 +83,9 @@ func TestStore_RebootIntegration(t *testing.T) {
 
 // generateRandomVector creates a vector with values between 0.0 and 1000.0
 func generateRandomVector(id uint32, dimensions int, r *rand.Rand) vektor.Vector {
-	coords := make([]float64, dimensions)
+	coords := make([]float32, dimensions)
 	for i := 0; i < dimensions; i++ {
-		coords[i] = r.Float64() * 1000.0
+		coords[i] = r.Float32() * 1000.0
 	}
 	return vektor.NewInMemoryVector(id, coords)
 }

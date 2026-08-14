@@ -4,17 +4,17 @@ import "fmt"
 
 type Vector interface {
 	ID() uint32
-	Read() ([]float64, error)
+	Read() ([]float32, error)
 }
 
 type InMemoryVector struct {
 	id   uint32
-	data []float64
+	data []float32
 }
 
 var _ Vector = InMemoryVector{}
 
-func NewInMemoryVector(id uint32, data []float64) InMemoryVector {
+func NewInMemoryVector(id uint32, data []float32) InMemoryVector {
 	return InMemoryVector{id, data}
 }
 
@@ -22,17 +22,17 @@ func (v InMemoryVector) ID() uint32 {
 	return v.id
 }
 
-func (v InMemoryVector) Read() ([]float64, error) {
+func (v InMemoryVector) Read() ([]float32, error) {
 	return v.data, nil
 }
 
 type VectorStore interface {
-	Get(uint32) ([]float64, bool)
-	Store([]float64) (uint32, error)
+	Get(uint32) ([]float32, bool)
+	Store([]float32) (uint32, error)
 }
 
 type InMemoryVectorStore struct {
-	data       []float64
+	data       []float32
 	vectorSize int
 	nextID     uint32
 }
@@ -41,13 +41,13 @@ var _ VectorStore = &InMemoryVectorStore{}
 
 func NewInMemoryVectorStore(vectorSize int) *InMemoryVectorStore {
 	return &InMemoryVectorStore{
-		make([]float64, 0),
+		make([]float32, 0),
 		vectorSize,
 		0,
 	}
 }
 
-func (s *InMemoryVectorStore) Get(id uint32) ([]float64, bool) {
+func (s *InMemoryVectorStore) Get(id uint32) ([]float32, bool) {
 	start := int(id) * s.vectorSize
 	end := start + s.vectorSize
 
@@ -58,7 +58,7 @@ func (s *InMemoryVectorStore) Get(id uint32) ([]float64, bool) {
 	return s.data[start:end], true
 }
 
-func (s *InMemoryVectorStore) Store(v []float64) (uint32, error) {
+func (s *InMemoryVectorStore) Store(v []float32) (uint32, error) {
 	if len(v) != s.vectorSize {
 		return 0, fmt.Errorf("vector size mismatch: expected %d, got %d", s.vectorSize, len(v))
 	}

@@ -84,7 +84,7 @@ func (s *Store) Insert(vec vektor.Vector) (vektor.Vector, error) {
 	return resultVec, nil
 }
 
-func (s *Store) writeVectorToDisk(vec []float64) error {
+func (s *Store) writeVectorToDisk(vec []float32) error {
 	return binary.Write(s.vectorWriter, binary.LittleEndian, vec)
 }
 
@@ -108,7 +108,7 @@ func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) erro
 	reader := bufio.NewReaderSize(f, 1024*1024)
 
 	for {
-		vec := make([]float64, s.vectorSize)
+		vec := make([]float32, s.vectorSize)
 		err := binary.Read(reader, binary.LittleEndian, &vec)
 		if err != nil {
 			if err != io.EOF {

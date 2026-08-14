@@ -2,19 +2,18 @@ package vektor
 
 import (
 	"fmt"
-	"math"
 )
 
-type Distance func(v1 []float64, v2 []float64) (float32, error)
+type Distance func(v1 []float32, v2 []float32) (float32, error)
 
-func Euclidean(v1 []float64, v2 []float64) (float32, error) {
+func Euclidean(v1 []float32, v2 []float32) (float32, error) {
 	if len(v1) != len(v2) {
 		return 0, fmt.Errorf("vectors of different length")
 	}
 
 	_ = v1[len(v2)-1] // Bounds Check Elimination hint
 
-	var sum float64
+	var sum float32
 	i := 0
 
 	for ; i <= len(v1)-4; i += 4 {
@@ -31,5 +30,5 @@ func Euclidean(v1 []float64, v2 []float64) (float32, error) {
 		sum += diff * diff
 	}
 
-	return float32(math.Sqrt(sum)), nil
+	return sum, nil
 }
