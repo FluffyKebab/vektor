@@ -19,21 +19,33 @@ func generateDataset(size int, dims int, r *rand.Rand) []vektor.Vector {
 			coords[d] = r.Float64() * 100.0
 		}
 
-		dataset[i] = vektor.NewInMemoryVector(uint32(i+1), coords)
+		dataset[i] = vektor.NewInMemoryVector(uint32(i), coords)
 	}
 	return dataset
 }
 
 // bruteForceTopK calculates the exact mathematical nearest neighbors
-func bruteForceTopK(query vektor.Vector, dataset []vektor.Vector, k int) []uint32 {
+func bruteForceTopK(b *testing.B, query vektor.Vector, dataset []vektor.Vector, k int) []uint32 {
+	b.Helper()
+
 	type distPair struct {
 		id   uint32
-		dist float64
+		dist float32
+	}
+
+	queryData, err := query.Read()
+	if err != nil {
+		b.Fatal(err)
 	}
 
 	pairs := make([]distPair, len(dataset))
 	for i, v := range dataset {
-		d, _ := vektor.Euclidean(query, v)
+		vecData, err := v.Read()
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		d, _ := vektor.Euclidean(queryData, vecData)
 		pairs[i] = distPair{id: v.ID(), dist: d}
 	}
 
@@ -81,7 +93,7 @@ func BenchmarkStore_SearchRecall(b *testing.B) {
 	b.Log("Calculating brute-force ground truth...")
 	groundTruths := make([][]uint32, querySize)
 	for i, q := range queries {
-		groundTruths[i] = bruteForceTopK(q, dataset, k)
+		groundTruths[i] = bruteForceTopK(b, q, dataset, k)
 	}
 
 	tempDir := b.TempDir()
@@ -98,7 +110,7 @@ func BenchmarkStore_SearchRecall(b *testing.B) {
 
 	b.Log("Building NSW Graph...")
 	for _, v := range dataset {
-		if err := db.Insert(v); err != nil {
+		if _, err := db.Insert(v); err != nil {
 			b.Fatalf("Failed to insert: %v", err)
 		}
 	}
@@ -137,7 +149,7 @@ func BenchmarkStore_SearchRecall(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			for _, q := range queries {
 				// We throw away the result because we know recall is exactly 1.0 (100%)
-				_ = bruteForceTopK(q, dataset, k)
+				_ = bruteForceTopK(b, q, dataset, k)
 			}
 		}
 

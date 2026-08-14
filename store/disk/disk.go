@@ -13,13 +13,13 @@ import (
 
 type Store struct {
 	ramStorage          vektor.Database
-	ramMutater          vektor.GraphMutater
 	vectorSize          int
 	graphMutationWriter io.WriteCloser
 	vectorWriter        io.WriteCloser
 }
 
 var _ vektor.GraphObserver = &Store{}
+var _ vektor.Database = &Store{}
 
 func NewStore(
 	ctx context.Context,
@@ -62,26 +62,26 @@ func NewStore(
 	return s, nil
 }
 
-func (s *Store) Insert(vec vektor.Vector) error {
+func (s *Store) Insert(vec vektor.Vector) (vektor.Vector, error) {
 	vecData, err := vec.Read()
 	if err != nil {
-		return fmt.Errorf("reading vector data: %w", err)
+		return nil, fmt.Errorf("reading vector data: %w", err)
 	}
 	if len(vecData) != s.vectorSize {
-		return fmt.Errorf("new vector is of size %v, must be of size %v", len(vecData), s.vectorSize)
+		return nil, fmt.Errorf("new vector is of size %v, must be of size %v", len(vecData), s.vectorSize)
 	}
 
 	err = s.writeVectorToDisk(vecData)
 	if err != nil {
-		return fmt.Errorf("writing vector to disk: %w", err)
+		return nil, fmt.Errorf("writing vector to disk: %w", err)
 	}
 
-	err = s.ramStorage.Insert(vec)
+	resultVec, err := s.ramStorage.Insert(vec)
 	if err != nil {
-		return fmt.Errorf("writing vector to ram storage: %w", err)
+		return nil, fmt.Errorf("writing vector to ram storage: %w", err)
 	}
 
-	return nil
+	return resultVec, nil
 }
 
 func (s *Store) writeVectorToDisk(vec []float64) error {
@@ -92,7 +92,7 @@ func (s *Store) FindClosest(vec vektor.Vector, n int) ([]vektor.Vector, error) {
 	return s.ramStorage.FindClosest(vec, n)
 }
 
-func (s *Store) OnEdgeAdded(fromID uint32, toID uint32, dist float64) { // TODO: handle errors
+func (s *Store) OnEdgeAdded(fromID uint32, toID uint32, dist float32) { // TODO: handle errors
 	s.graphMutationWriter.Write(graphMutationAction{actionAddEdge, fromID, toID, dist}.toBytes())
 }
 
@@ -107,8 +107,6 @@ func (s *Store) OnNodeAdded(nodeID uint32) {
 func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) error {
 	reader := bufio.NewReaderSize(f, 1024*1024)
 
-	var id uint32 = 1
-
 	for {
 		vec := make([]float64, s.vectorSize)
 		err := binary.Read(reader, binary.LittleEndian, &vec)
@@ -120,9 +118,9 @@ func (s *Store) readVectorsIntoStore(f io.Reader, store vektor.VectorStore) erro
 			break
 		}
 
-		store.Store(vektor.NewInMemoryVector(id, vec))
-		id++
+		store.Store(vec)
 	}
+
 	return nil
 }
 

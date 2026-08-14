@@ -11,18 +11,19 @@ import (
 type NSW struct {
 	dist          vektor.Distance
 	graphObserver vektor.GraphObserver
-	store         vektor.VectorStore
+	vectors       vektor.VectorStore
 
 	queuePool     sync.Pool
 	insertedPool  sync.Pool
 	distancesPool sync.Pool
 
-	entryNode *node
-	nodes     map[uint32]*node
+	entryNodeID uint32
+	nodes       *nodeStore
 
 	maxNeighbors  int
 	initNeighbors int
 	efSearch      int
+	curID         uint32
 }
 
 var _ vektor.Database = &NSW{}
@@ -31,11 +32,12 @@ var _ vektor.GraphMutater = &NSW{}
 func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeighbors, efSearch int) *NSW {
 	return &NSW{
 		dist:          dist,
-		store:         store,
-		nodes:         make(map[uint32]*node),
+		vectors:       store,
+		nodes:         newNodeStore(maxNeighbors + 1),
 		maxNeighbors:  maxNeighbors,
 		initNeighbors: initNeighbors,
 		efSearch:      efSearch,
+		entryNodeID:   emptyNodeID,
 
 		queuePool: sync.Pool{
 			New: func() any {
@@ -61,138 +63,136 @@ func (n *NSW) SetGraphObserver(obs vektor.GraphObserver) {
 	n.graphObserver = obs
 }
 
-func (n *NSW) Insert(vec vektor.Vector) error {
-	node := newNode(vec.ID(), n.maxNeighbors)
-
-	if n.graphObserver != nil {
-		n.graphObserver.OnNodeAdded(vec.ID())
+func (n *NSW) Insert(vec vektor.Vector) (vektor.Vector, error) {
+	resultVec, newNode, err := n.insertIntoVecAndNodeStore(vec)
+	if err != nil {
+		return nil, err
 	}
 
-	n.store.Store(vec)
-	n.nodes[vec.ID()] = node
-
-	if n.entryNode == nil {
-		n.entryNode = node
-		return nil
+	if n.entryNodeID == emptyNodeID {
+		n.entryNodeID = newNode.nodeStoreID
+		return nil, nil
 	}
 
 	s := doSearch(vec, n.initNeighbors, n)
 	defer s.cleanup(n)
-
 	if err := s.getErr(); err != nil {
-		return fmt.Errorf("finding neighbors of new vector: %w", err)
+		return nil, fmt.Errorf("finding neighbors of new vector: %w", err)
 	}
 
-	for _, newNeighbor := range s.getResultNodes() {
-		newNeighborVec, ok := n.store.Get(newNeighbor.id)
-		if !ok {
-			return errors.New("store is missing vector found in graph")
+	for _, nodeDist := range s.getResultNodeDist() {
+		newNeighbor, found := n.nodes.get(nodeDist.nodeID)
+		if !found {
+			return nil, errors.New("node unexpectedly missing from node store")
 		}
 
-		distNodeNeighbor, err := n.dist(vec, newNeighborVec)
-		if err != nil {
-			return fmt.Errorf("calculating vector distance: %w", err)
-		}
-
-		n.addNeighbor(node, newNeighbor, distNodeNeighbor)
-		n.addNeighbor(newNeighbor, node, distNodeNeighbor)
+		n.addNeighbor(newNode, newNeighbor, nodeDist.dist)
+		n.addNeighbor(newNeighbor, newNode, nodeDist.dist)
 	}
 
-	return nil
+	return resultVec, nil
 }
 
 func (n *NSW) FindClosest(vec vektor.Vector, k int) ([]vektor.Vector, error) {
-	if n.entryNode == nil {
-		if len(n.nodes) == 0 {
+	if n.entryNodeID == emptyNodeID {
+		if n.nodes.numNodes() == 0 {
 			return nil, errors.New("find closest with zero vectors inserted")
 		}
-
-		for _, entryNode := range n.nodes {
-			n.entryNode = entryNode
-			break
-		}
+		entryNode, _ := n.nodes.get(0)
+		n.entryNodeID = entryNode.nodeStoreID
 	}
 
 	s := doSearch(vec, k, n)
 	result := s.getResultVectors()
 	err := s.getErr()
-
 	s.cleanup(n)
+
 	return result, err
 }
 
-func (n *NSW) addNeighbor(n1, n2 *node, dist float64) {
+func (n *NSW) addNeighbor(n1, n2 node, dist float32) {
 	if n.graphObserver != nil {
-		n.graphObserver.OnEdgeAdded(n1.id, n2.id, dist)
+		n.graphObserver.OnEdgeAdded(n1.nodeStoreID, n2.nodeStoreID, dist)
 	}
 
-	n1.neighbors = append(n1.neighbors, nodeDistance{n2, dist})
+	needToRemove := n1.addNeighbor(nodeDistance{n2.nodeStoreID, dist})
 
-	if len(n1.neighbors) > n.maxNeighbors {
+	if needToRemove {
 		n.removeWorstNeighbor(n1)
 	}
 }
 
-func (n *NSW) removeWorstNeighbor(n1 *node) {
+func (n *NSW) removeWorstNeighbor(n1 node) {
 	if len(n1.neighbors) == 0 {
 		return
 	}
 
-	worstIdx := n1.neighborWithHighestDistance()
-	worstNeighborID := n1.neighbors[worstIdx].node.id
+	worstIdx := n1.indexOfNeighborWithHighestDistance()
+	worstNeighborID := n1.neighbors[worstIdx].nodeID
 
 	if n.graphObserver != nil {
-		n.graphObserver.OnEdgeRemoved(n1.id, worstNeighborID)
+		n.graphObserver.OnEdgeRemoved(n1.nodeStoreID, worstNeighborID)
 	}
 
 	n1.removeNeighbor(worstIdx)
 }
 
-func (n *NSW) AddEdge(fromID uint32, toID uint32, dist float64) error {
-	n1, ok := n.nodes[fromID]
+func (n *NSW) AddEdge(fromID uint32, toID uint32, dist float32) error {
+	n1, ok := n.nodes.get(fromID)
 	if !ok {
 		return fmt.Errorf("adding edge: from_node %d does not exist in graph", fromID)
 	}
 
-	n2, ok := n.nodes[toID]
+	n2, ok := n.nodes.get(toID)
 	if !ok {
 		return fmt.Errorf("adding edge: to_node %d does not exist in graph", toID)
 	}
 
-	n1.neighbors = append(n1.neighbors, nodeDistance{n2, dist})
+	n1.addNeighbor(nodeDistance{n2.nodeStoreID, dist})
 	return nil
 }
 
-func (n *NSW) AddNode(nodeID uint32) error {
-	if _, ok := n.nodes[nodeID]; ok {
-		return fmt.Errorf("adding node: %d already exist in graph", nodeID)
-	}
-
-	n.nodes[nodeID] = newNode(nodeID, n.maxNeighbors)
-
-	if n.entryNode == nil {
-		n.entryNode = n.nodes[nodeID]
-	}
-
+func (n *NSW) AddNode(vectorID uint32) error {
+	n.nodes.newNode(vectorID)
 	return nil
 }
 
 func (n *NSW) RemoveEdge(fromID uint32, toID uint32) error {
-	n1, ok := n.nodes[fromID]
+	n1, ok := n.nodes.get(fromID)
 	if !ok {
 		return fmt.Errorf("removing edge: from_node %d does not exist in graph", fromID)
 	}
 
-	n2, ok := n.nodes[toID]
+	n2, ok := n.nodes.get(toID)
 	if !ok {
 		return fmt.Errorf("removing edge: to_node %d does not exist in graph", toID)
 	}
 
-	n2IdxInN1 := n1.findNeighborIndex(n2.id)
+	n2IdxInN1 := n1.indexOfNeighbor(n2.nodeStoreID)
 	if n2IdxInN1 == -1 {
 		return fmt.Errorf("removing edge: from_id %d does not have neighbor %d", fromID, toID)
 	}
 
 	n1.removeNeighbor(n2IdxInN1)
 	return nil
+}
+
+func (n *NSW) insertIntoVecAndNodeStore(v vektor.Vector) (vektor.Vector, node, error) {
+	vecData, err := v.Read()
+	if err != nil {
+		return nil, node{}, fmt.Errorf("reading data from vector to be inserted: %w", err)
+	}
+
+	vecStoreID, err := n.vectors.Store(vecData)
+	if err != nil {
+		return nil, node{}, fmt.Errorf("storing error in vector store: %w", err)
+	}
+
+	newNode := n.nodes.newNode(vecStoreID)
+
+	if n.graphObserver != nil {
+		n.graphObserver.OnNodeAdded(vecStoreID)
+	}
+
+	return vektor.NewInMemoryVector(newNode.nodeStoreID, vecData), newNode, nil
 }

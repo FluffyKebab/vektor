@@ -29,10 +29,9 @@ func TestStore_RebootIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to initialize first DB instance")
 
 	// Insert 200 vectors in a straight line
-	for i := uint32(1); i <= 200; i++ {
-		// e.g. ID 1 -> [1.0, 2.0], ID 2 -> [2.0, 4.0]
+	for i := uint32(0); i < 200; i++ {
 		vec := vektor.NewInMemoryVector(i, []float64{float64(i), float64(i * 2)})
-		err := db1.Insert(vec)
+		_, err := db1.Insert(vec)
 		require.NoError(t, err, "Failed to insert vector ID %d", i)
 	}
 
@@ -74,7 +73,7 @@ func TestStore_RebootIntegration(t *testing.T) {
 	// --- PHASE 3: LIVE MUTATION AFTER REBOOT ---
 	// Prove the database is fully functional after restoring from disk
 	vec201 := vektor.NewInMemoryVector(201, []float64{201.0, 402.0})
-	err = db2.Insert(vec201)
+	_, err = db2.Insert(vec201)
 	require.NoError(t, err, "Failed to insert new vector after reboot")
 
 	results3, err := db2.FindClosest(vec201, 1)
@@ -112,7 +111,7 @@ func TestStore_ExtensiveRebootIntegration(t *testing.T) {
 	// Insert 500 random vectors to build a complex graph topology
 	for i := uint32(1); i <= 500; i++ {
 		vec := generateRandomVector(i, vectorSize, r)
-		err := db1.Insert(vec)
+		_, err := db1.Insert(vec)
 		require.NoError(t, err, "Failed to insert vector ID %d", i)
 	}
 

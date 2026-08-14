@@ -15,7 +15,7 @@ const (
 )
 
 func New(ctx context.Context, dist vektor.Distance, vectorSize int, graphMutationPath string, vectorStorePath string) (vektor.Database, error) {
-	vectorStore := vektor.NewInMemoryVectorStore()
+	vectorStore := vektor.NewInMemoryVectorStore(vectorSize)
 
 	graphStore := nsw.New(vectorStore, dist, defaultMaxNeighbors, defaultInitNeighbors, defaultEf)
 	diskStore, err := disk.NewStore(ctx, graphMutationPath, vectorStorePath, vectorSize, graphStore, vectorStore, graphStore)

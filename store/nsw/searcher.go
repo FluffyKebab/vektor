@@ -8,13 +8,14 @@ import (
 )
 
 type searcher struct {
-	targetVec       vektor.Vector
+	targetVec       []float64
 	candidateQueue  *priorityQueue
 	resultQueue     *priorityQueue
 	insertedInQueue map[uint32]struct{}
 	distances       map[uint32]float64
 	dist            vektor.Distance
-	store           vektor.VectorStore
+	vectors         vektor.VectorStore
+	nodes           *nodeStore
 	k               int
 	ef              int
 	err             error
@@ -26,10 +27,13 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 		efSearch = k
 	}
 
+	vecData, err := targetVec.Read()
+
 	s := &searcher{
-		targetVec:       targetVec,
+		targetVec:       vecData,
 		dist:            n.dist,
-		store:           n.store,
+		vectors:         n.vectors,
+		nodes:           n.nodes,
 		k:               k,
 		ef:              efSearch,
 		candidateQueue:  n.queuePool.Get().(*priorityQueue),
@@ -38,19 +42,31 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 		insertedInQueue: n.insertedPool.Get().(map[uint32]struct{}),
 	}
 
-	entryVec, ok := s.store.Get(n.entryNode.id)
-	if !ok {
-		s.err = errors.New("entry node vector is missing from vectore store")
-		return s
-	}
-
-	entryNodeDist, err := s.getDist(entryVec, targetVec)
 	if err != nil {
 		s.err = err
 		return s
 	}
 
-	s.insertInQueue(n.entryNode, entryNodeDist)
+	entryNode, ok := s.nodes.get(n.entryNodeID)
+	if !ok {
+		s.err = errors.New("entry node is missing from vector store")
+		return s
+	}
+
+	entryNodeVec, ok := s.vectors.Get(entryNode.vectorStoreID)
+	if !ok {
+		s.err = errors.New("entry node is missing from vector store")
+		return s
+	}
+
+	entryNodeDist, err := s.dist(s.targetVec, entryNodeVec)
+	if err != nil {
+		s.err = err
+		return s
+	}
+	s.insertedInQueue[n.entryNodeID] = struct{}{}
+
+	s.insertInQueue(entryNode, entryNodeDist)
 	return s
 }
 
@@ -77,53 +93,73 @@ func (s *searcher) next() bool {
 		return false
 	}
 
-	var curWorstResult nodeDistance
+	var curWorstResult *nodeDistance
 	if s.resultQueue.len() != 0 {
-		curWorstResult, err = s.resultQueue.getBottom()
+		worst, err := s.resultQueue.getBottom()
 		if err != nil {
 			s.err = err
 			return false
 		}
 
+		curWorstResult = &worst
 		if curWorstResult.dist < curBestCandidate.dist {
 			return false
 		}
 	}
 
-	for _, n := range curBestCandidate.node.neighbors {
-		s.handleNeighbor(n.node, curWorstResult)
+	bestCandidateNode, ok := s.nodes.get(curBestCandidate.nodeID)
+	if !ok {
+		s.err = errors.New("node unexpectedly missing from node store")
+		return false
+	}
+
+	for _, n := range bestCandidateNode.neighbors {
+		if n.nodeID == emptyNodeID {
+			break
+		}
+
+		s.handleNeighbor(n.nodeID, curWorstResult)
+		if s.err != nil {
+			return false
+		}
 	}
 
 	return true
 }
 
-func (s *searcher) handleNeighbor(neighbor *node, curWorstResult nodeDistance) {
-	nVec, ok := s.store.Get(neighbor.id)
+func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult *nodeDistance) {
+	if _, isInserted := s.insertedInQueue[neighborID]; isInserted {
+		return
+	}
+	s.insertedInQueue[neighborID] = struct{}{}
+
+	nNode, ok := s.nodes.get(neighborID)
 	if !ok {
-		s.err = errors.New("vector in graph is missing from vectore store")
+		s.err = errors.New("node in graph is missing from node store")
 		return
 	}
 
-	dist, err := s.getDist(nVec, s.targetVec)
+	nVec, ok := s.vectors.Get(nNode.vectorStoreID)
+	if !ok {
+		s.err = errors.New("vector in graph is missing from vector store")
+		return
+	}
+
+	dist, err := s.dist(s.targetVec, nVec)
 	if err != nil {
-		s.err = err
+		s.err = fmt.Errorf("calculating distance: %w", err)
 		return
 	}
 
-	if s.resultQueue.len() <= s.ef ||
-		(curWorstResult.node != nil && dist < curWorstResult.dist) {
+	if s.resultQueue.len() < s.ef ||
+		(curWorstResult != nil && dist < curWorstResult.dist) {
 
-		s.insertInQueue(neighbor, dist)
+		s.insertInQueue(nNode, dist)
 	}
 }
 
-func (s *searcher) insertInQueue(n *node, dist float64) {
-	if _, isInserted := s.insertedInQueue[n.id]; isInserted {
-		return
-	}
-	s.insertedInQueue[n.id] = struct{}{}
-
-	elem := nodeDistance{n, dist}
+func (s *searcher) insertInQueue(n node, dist float32) {
+	elem := nodeDistance{n.nodeStoreID, dist}
 
 	s.resultQueue.insert(elem)
 	if s.resultQueue.len() > s.ef {
@@ -131,20 +167,6 @@ func (s *searcher) insertInQueue(n *node, dist float64) {
 	}
 
 	s.candidateQueue.insert(elem)
-}
-
-func (s *searcher) getDist(curVec, targetVec vektor.Vector) (float64, error) {
-	if d, found := s.distances[curVec.ID()]; found {
-		return d, nil
-	}
-
-	d, err := s.dist(curVec, targetVec)
-	if err != nil {
-		return 0, err
-	}
-
-	s.distances[curVec.ID()] = d
-	return d, nil
 }
 
 func (s *searcher) getErr() error {
@@ -163,22 +185,30 @@ func (s *searcher) getResultVectors() []vektor.Vector {
 	result := make([]vektor.Vector, 0, s.k)
 
 	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
-		vec, ok := s.store.Get(s.resultQueue.vecs[i].node.id) // PANIC
+		curNodeID := s.resultQueue.vecs[i].nodeID
+
+		resultNode, ok := s.nodes.get(curNodeID)
+		if !ok {
+			s.err = errors.New("node in graph is missing from node store")
+			return nil
+		}
+
+		vec, ok := s.vectors.Get(resultNode.vectorStoreID)
 		if !ok {
 			s.err = errors.New("vector in graph is missing from vector store")
 			return nil
 		}
 
-		result = append(result, vec)
+		result = append(result, vektor.NewInMemoryVector(curNodeID, vec))
 	}
 
 	return result
 }
 
-func (s *searcher) getResultNodes() []*node {
-	result := make([]*node, 0, s.k)
+func (s *searcher) getResultNodeDist() []nodeDistance {
+	result := make([]nodeDistance, 0, s.k)
 	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
-		result = append(result, s.resultQueue.vecs[i].node)
+		result = append(result, s.resultQueue.vecs[i])
 	}
 
 	return result
