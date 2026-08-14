@@ -361,6 +361,8 @@ func TestNSW_RemoveEdge(t *testing.T) {
 
 		// Link them
 		nsw.AddEdge(n1.nodeStoreID, n2.nodeStoreID, 3.14)
+
+		n1, _ = nsw.nodes.get(0) // nodeStoreID 0
 		require.Equal(t, 1, n1.numNeighbors())
 
 		// Remove the edge

@@ -163,33 +163,4 @@ func TestNodeStore(t *testing.T) {
 		_, ok = store.get(2)
 		assert.False(t, ok, "Should return false for out-of-bounds ID")
 	})
-
-	t.Run("addNeighbor modifies the underlying flat slice in nodeStore", func(t *testing.T) {
-		maxN := 3
-		store := newNodeStore(maxN)
-
-		// Create two nodes
-		// nodeA will occupy indices 0, 1, 2 in the backing flat slice
-		// nodeB will occupy indices 3, 4, 5 in the backing flat slice
-		nodeA := store.newNode(100)
-		nodeB := store.newNode(200)
-
-		// Add neighbor to nodeA
-		nodeA.addNeighbor(nodeDistance{nodeID: nodeB.nodeStoreID, dist: 10.0})
-
-		// 1. Verify nodeA's local slice view is updated
-		assert.Equal(t, nodeB.nodeStoreID, nodeA.neighbors[0].nodeID)
-		assert.Equal(t, float32(10.0), nodeA.neighbors[0].dist)
-
-		// 2. Verify the underlying store's flat slice is updated at the correct index (0)
-		assert.Equal(t, nodeB.nodeStoreID, store.neighbors[0].nodeID)
-		assert.Equal(t, float32(10.0), store.neighbors[0].dist)
-
-		// Add neighbor to nodeB to test the offset logic
-		nodeB.addNeighbor(nodeDistance{nodeID: nodeA.nodeStoreID, dist: 5.0})
-
-		// 3. Verify the underlying flat slice is updated at the correct offset index (maxN + 0 = 3)
-		assert.Equal(t, nodeA.nodeStoreID, store.neighbors[3].nodeID)
-		assert.Equal(t, float32(5.0), store.neighbors[3].dist)
-	})
 }

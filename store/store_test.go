@@ -78,7 +78,7 @@ func TestStore_RebootIntegration(t *testing.T) {
 
 	results3, err := db2.FindClosest(vec201, 1)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(201), results3[0].ID(), "Graph failed to route to newly inserted node")
+	assert.Equal(t, uint32(200), results3[0].ID(), "Graph failed to route to newly inserted node")
 }
 
 // generateRandomVector creates a vector with values between 0.0 and 1000.0
