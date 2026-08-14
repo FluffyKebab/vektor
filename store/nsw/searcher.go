@@ -9,7 +9,7 @@ import (
 
 type searcher struct {
 	targetVec       []float64
-	candidateQueue  *priorityQueue
+	candidateQueue  *candidateQueue
 	resultQueue     *priorityQueue
 	insertedInQueue map[uint32]struct{}
 	distances       map[uint32]float64
@@ -36,8 +36,8 @@ func newSearcher(targetVec vektor.Vector, k int, n *NSW) *searcher {
 		nodes:           n.nodes,
 		k:               k,
 		ef:              efSearch,
-		candidateQueue:  n.queuePool.Get().(*priorityQueue),
-		resultQueue:     n.queuePool.Get().(*priorityQueue),
+		candidateQueue:  n.candidateQueuePool.Get().(*candidateQueue),
+		resultQueue:     n.resultQueuePool.Get().(*priorityQueue),
 		distances:       n.distancesPool.Get().(map[uint32]float64),
 		insertedInQueue: n.insertedPool.Get().(map[uint32]struct{}),
 	}
@@ -223,9 +223,9 @@ func (s *searcher) cleanup(n *NSW) {
 
 	clear(s.candidateQueue.vecs)
 	s.candidateQueue.vecs = s.candidateQueue.vecs[:0]
-	n.queuePool.Put(s.candidateQueue)
+	n.candidateQueuePool.Put(s.candidateQueue)
 
 	clear(s.resultQueue.vecs)
 	s.resultQueue.vecs = s.resultQueue.vecs[:0]
-	n.queuePool.Put(s.resultQueue)
+	n.resultQueuePool.Put(s.resultQueue)
 }

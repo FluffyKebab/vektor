@@ -13,9 +13,10 @@ type NSW struct {
 	graphObserver vektor.GraphObserver
 	vectors       vektor.VectorStore
 
-	queuePool     sync.Pool
-	insertedPool  sync.Pool
-	distancesPool sync.Pool
+	resultQueuePool    sync.Pool
+	candidateQueuePool sync.Pool
+	insertedPool       sync.Pool
+	distancesPool      sync.Pool
 
 	entryNodeID uint32
 	nodes       *nodeStore
@@ -39,9 +40,15 @@ func New(store vektor.VectorStore, dist vektor.Distance, maxNeighbors, initNeigh
 		efSearch:      efSearch,
 		entryNodeID:   emptyNodeID,
 
-		queuePool: sync.Pool{
+		resultQueuePool: sync.Pool{
 			New: func() any {
 				return newPriorityQueue(efSearch + 1)
+			},
+		},
+
+		candidateQueuePool: sync.Pool{
+			New: func() any {
+				return newCandidateQueue(efSearch * 2)
 			},
 		},
 

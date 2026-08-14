@@ -14,7 +14,8 @@ func Euclidean(v1 []float64, v2 []float64) (float32, error) {
 
 	var sum float64
 	for i := 0; i < len(v1); i++ {
-		sum += math.Pow(v1[i]-v2[i], 2)
+		diff := v1[i] - v2[i]
+		sum += diff * diff
 	}
 
 	return float32(math.Sqrt(sum)), nil
