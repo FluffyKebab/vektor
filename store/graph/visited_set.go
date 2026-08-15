@@ -1,18 +1,18 @@
-package nsw
+package graph
 
-type visitedSet struct {
+type VisitedSet struct {
 	data       []uint16
 	generation uint16
 }
 
-func newVisitedSet(size int) *visitedSet {
-	return &visitedSet{
+func NewVisitedSet(size int) *VisitedSet {
+	return &VisitedSet{
 		data:       make([]uint16, size),
 		generation: 1,
 	}
 }
 
-func (s *visitedSet) update(numNodes int) {
+func (s *VisitedSet) Update(numNodes int) {
 	s.generation++
 
 	if len(s.data) < numNodes {
@@ -27,7 +27,7 @@ func (s *visitedSet) update(numNodes int) {
 	}
 }
 
-func (s *visitedSet) isVisited(id uint32) bool {
+func (s *VisitedSet) IsVisited(id uint32) bool {
 	if int(id) >= len(s.data) {
 		return true
 	}
@@ -35,7 +35,7 @@ func (s *visitedSet) isVisited(id uint32) bool {
 	return s.data[int(id)] == s.generation
 }
 
-func (s *visitedSet) visit(id uint32) {
+func (s *VisitedSet) Visit(id uint32) {
 	if int(id) >= len(s.data) {
 		return
 	}

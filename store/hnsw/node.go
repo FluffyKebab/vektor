@@ -1,91 +1,25 @@
 package hnsw
 
 import (
-	"errors"
 	"fmt"
-	"math"
+
+	"github.com/FluffyKebab/vektor/store/graph"
 )
 
-var errInvalidID = errors.New("invalid node ID")
-
-const emptyNodeID uint32 = math.MaxUint32
-
-type nodeDistance struct {
-	nodeID uint32
-	dist   float32
-}
-
-type neighbors []nodeDistance
-
-func (n neighbors) indexOfNeighborWithHighestDistance() int {
-	if n.numNeighbors() == 0 {
-		return -1
-	}
-
-	worstIdx := 0
-	maxDist := n[0].dist
-	for i := 1; i < len(n) && n[i].nodeID != emptyNodeID; i++ {
-		if n[i].dist > maxDist {
-			maxDist = n[i].dist
-			worstIdx = i
-		}
-	}
-
-	return worstIdx
-}
-
-func (n neighbors) indexOfNeighbor(neighborID uint32) int {
-	for i := 0; i < len(n) && n[i].nodeID != emptyNodeID; i++ {
-		if n[i].nodeID == neighborID {
-			return i
-		}
-	}
-
-	return -1
-}
-
-func (n neighbors) numNeighbors() int {
-	i := 0
-	for i < len(n) && n[i].nodeID != emptyNodeID {
-		i++
-	}
-	return i
-}
-
-func (n neighbors) removeNeighbor(i int) {
-	lastIdx := n.numNeighbors() - 1
-	n[i] = n[lastIdx]
-	n[lastIdx] = nodeDistance{nodeID: emptyNodeID}
-}
-
-func (n neighbors) addNeighbor(nd nodeDistance) (needToRemove bool) {
-	place := n.numNeighbors()
-	if place >= len(n) {
-		return true
-	}
-
-	n[place] = nd
-	if place+1 >= len(n) {
-		return true
-	}
-
-	return false
-}
-
 type node struct {
-	neighbors     neighbors
+	neighbors     graph.Neighbors
 	vectorStoreID uint32
 	highestLevel  uint8
 }
 
 type nodeStore struct {
-	bottomLayerNeighbors []nodeDistance
+	bottomLayerNeighbors []graph.NodeDistance
 	vectorStoreIDs       []uint32
 	highestLevel         []uint8
 
 	// offsets functions a map from a nodeID to the index where storage of upper layer neighbors begin.
 	offsets             []uint32
-	upperLayerNeighbors []nodeDistance
+	upperLayerNeighbors []graph.NodeDistance
 
 	// layers stores the number of layers.
 	layers int
@@ -99,11 +33,11 @@ type nodeStore struct {
 
 func newNodeStore(layers, maxN0, maxN1, initCap int) *nodeStore {
 	return &nodeStore{
-		bottomLayerNeighbors: make([]nodeDistance, 0, initCap),
+		bottomLayerNeighbors: make([]graph.NodeDistance, 0, initCap),
 		vectorStoreIDs:       make([]uint32, 0, initCap),
 		highestLevel:         make([]uint8, 0, initCap),
 		offsets:              make([]uint32, 0, initCap),
-		upperLayerNeighbors:  make([]nodeDistance, 0),
+		upperLayerNeighbors:  make([]graph.NodeDistance, 0),
 
 		layers: layers,
 		maxN0:  maxN0,
@@ -113,7 +47,7 @@ func newNodeStore(layers, maxN0, maxN1, initCap int) *nodeStore {
 
 func (n *nodeStore) getNode(nodeID uint32, layer uint8) (node, error) {
 	if int(nodeID) >= len(n.highestLevel) {
-		return node{}, errInvalidID
+		return node{}, graph.ErrInvalidID
 	}
 
 	if layer > n.highestLevel[nodeID] {
@@ -122,7 +56,7 @@ func (n *nodeStore) getNode(nodeID uint32, layer uint8) (node, error) {
 
 	vecID := n.vectorStoreIDs[nodeID]
 
-	var ns neighbors
+	var ns graph.Neighbors
 	if layer == 0 {
 		start := int(nodeID) * n.maxN0
 		end := start + n.maxN0
@@ -156,9 +90,9 @@ func (n *nodeStore) addNode(vectorStoreID uint32, highestLevel uint8) (uint32, e
 		length := (n.layers - 1) * n.maxN0
 
 		n.offsets[nodeID] = uint32(offset)
-		n.upperLayerNeighbors = append(n.upperLayerNeighbors, make([]nodeDistance, length)...)
+		n.upperLayerNeighbors = append(n.upperLayerNeighbors, make([]graph.NodeDistance, length)...)
 		for i := offset; i < offset+length; i++ {
-			n.bottomLayerNeighbors[i].nodeID = emptyNodeID
+			n.bottomLayerNeighbors[i].NodeID = graph.EmptyNodeID
 		}
 	}
 

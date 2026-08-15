@@ -1,79 +1,15 @@
 package nsw
 
-import (
-	"math"
-)
-
-const emptyNodeID uint32 = math.MaxUint32
+import "github.com/FluffyKebab/vektor/store/graph"
 
 type node struct {
-	nodeStoreID   uint32
-	vectorStoreID uint32
-	neighbors     []nodeDistance
-}
-
-type nodeDistance struct {
-	nodeID uint32
-	dist   float32
-}
-
-func (n node) indexOfNeighborWithHighestDistance() int {
-	if n.numNeighbors() == 0 {
-		return -1
-	}
-
-	worstIdx := 0
-	maxDist := n.neighbors[0].dist
-	for i := 1; i < len(n.neighbors) && n.neighbors[i].nodeID != emptyNodeID; i++ {
-		if n.neighbors[i].dist > maxDist {
-			maxDist = n.neighbors[i].dist
-			worstIdx = i
-		}
-	}
-
-	return worstIdx
-}
-
-func (n node) indexOfNeighbor(neighborID uint32) int {
-	for i := 0; i < len(n.neighbors) && n.neighbors[i].nodeID != emptyNodeID; i++ {
-		if n.neighbors[i].nodeID == neighborID {
-			return i
-		}
-	}
-
-	return -1
-}
-
-func (n node) numNeighbors() int {
-	i := 0
-	for i < len(n.neighbors) && n.neighbors[i].nodeID != emptyNodeID {
-		i++
-	}
-	return i
-}
-
-func (n *node) removeNeighbor(i int) {
-	lastIdx := n.numNeighbors() - 1
-	n.neighbors[i] = n.neighbors[lastIdx]
-	n.neighbors[lastIdx] = nodeDistance{nodeID: emptyNodeID}
-}
-
-func (n *node) addNeighbor(nd nodeDistance) (needToRemove bool) {
-	place := n.numNeighbors()
-	if place >= len(n.neighbors) {
-		return true
-	}
-
-	n.neighbors[place] = nd
-	if place+1 >= len(n.neighbors) {
-		return true
-	}
-
-	return false
+	neighbors graph.Neighbors
+	nodeID    uint32
+	vectorID  uint32
 }
 
 type nodeStore struct {
-	neighbors []nodeDistance
+	neighbors []graph.NodeDistance
 	vectorIDs []uint32
 	nextID    uint32
 	maxN      int
@@ -81,7 +17,7 @@ type nodeStore struct {
 
 func newNodeStore(maxN int) *nodeStore {
 	return &nodeStore{
-		neighbors: make([]nodeDistance, 0),
+		neighbors: make([]graph.NodeDistance, 0),
 		vectorIDs: make([]uint32, 0),
 		maxN:      maxN,
 	}
@@ -95,18 +31,18 @@ func (s *nodeStore) get(id uint32) (node, bool) {
 		return node{}, false
 	}
 
-	return node{id, s.vectorIDs[int(id)], s.neighbors[start:end]}, true
+	return node{s.neighbors[start:end], id, s.vectorIDs[int(id)]}, true
 }
 
 func (s *nodeStore) newNode(vectorStoreID uint32) node {
 	id := s.nextID
 	s.nextID++
 
-	newBlock := make([]nodeDistance, s.maxN)
-	for i := range newBlock {
-		newBlock[i].nodeID = emptyNodeID
+	prevLength := len(s.neighbors)
+	s.neighbors = append(s.neighbors, make([]graph.NodeDistance, s.maxN)...)
+	for i := prevLength; i < len(s.neighbors); i++ {
+		s.neighbors[i].NodeID = graph.EmptyNodeID
 	}
-	s.neighbors = append(s.neighbors, newBlock...)
 	s.vectorIDs = append(s.vectorIDs, vectorStoreID)
 
 	newNode, _ := s.get(id)

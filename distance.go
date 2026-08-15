@@ -2,6 +2,7 @@ package vektor
 
 import (
 	"fmt"
+	"math"
 )
 
 type Distance func(v1 []float32, v2 []float32) (float32, error)
@@ -30,5 +31,5 @@ func Euclidean(v1 []float32, v2 []float32) (float32, error) {
 		sum += diff * diff
 	}
 
-	return sum, nil
+	return float32(math.Sqrt(float64(sum))), nil
 }

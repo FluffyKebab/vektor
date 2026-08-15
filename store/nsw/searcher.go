@@ -5,13 +5,14 @@ import (
 	"fmt"
 
 	"github.com/FluffyKebab/vektor"
+	"github.com/FluffyKebab/vektor/store/graph"
 )
 
 type searcher struct {
 	targetVec      []float32
-	candidateQueue *candidateQueue
-	resultQueue    *priorityQueue
-	visited        *visitedSet
+	candidateQueue *graph.HeapQueue
+	resultQueue    *graph.SliceQueue
+	visited        *graph.VisitedSet
 	dist           vektor.Distance
 	vectors        vektor.VectorStore
 	nodes          *nodeStore
@@ -34,11 +35,11 @@ func newSearcher(targetVec vektor.Vector, k, ef int, n *NSW) *searcher {
 		nodes:          n.nodes,
 		k:              k,
 		ef:             ef,
-		candidateQueue: n.candidateQueuePool.Get().(*candidateQueue),
-		resultQueue:    n.resultQueuePool.Get().(*priorityQueue),
-		visited:        n.visited.Get().(*visitedSet),
+		candidateQueue: n.candidateQueuePool.Get().(*graph.HeapQueue),
+		resultQueue:    n.resultQueuePool.Get().(*graph.SliceQueue),
+		visited:        n.visited.Get().(*graph.VisitedSet),
 	}
-	s.visited.update(s.nodes.numNodes())
+	s.visited.Update(s.nodes.numNodes())
 
 	if err != nil {
 		s.err = err
@@ -51,7 +52,7 @@ func newSearcher(targetVec vektor.Vector, k, ef int, n *NSW) *searcher {
 		return s
 	}
 
-	entryNodeVec, ok := s.vectors.Get(entryNode.vectorStoreID)
+	entryNodeVec, ok := s.vectors.Get(entryNode.vectorID)
 	if !ok {
 		s.err = errors.New("entry node is missing from vector store")
 		return s
@@ -62,7 +63,7 @@ func newSearcher(targetVec vektor.Vector, k, ef int, n *NSW) *searcher {
 		s.err = err
 		return s
 	}
-	s.visited.visit(n.entryNodeID)
+	s.visited.Visit(n.entryNodeID)
 
 	s.insertInQueue(entryNode, entryNodeDist)
 	return s
@@ -81,42 +82,36 @@ func (s *searcher) next() bool {
 		return false
 	}
 
-	if s.candidateQueue.len() == 0 {
+	if s.candidateQueue.Len() == 0 {
 		return false
 	}
 
-	curBestCandidate, err := s.candidateQueue.popTop()
+	curBestCandidate, err := s.candidateQueue.PopTop()
 	if err != nil {
 		s.err = err
 		return false
 	}
 
-	var curWorstResult *nodeDistance
-	if s.resultQueue.len() != 0 {
-		worst, err := s.resultQueue.getBottom()
-		if err != nil {
-			s.err = err
-			return false
-		}
-
-		curWorstResult = &worst
-		if curWorstResult.dist < curBestCandidate.dist {
+	curWorstResult := graph.EmptyNodeDistance
+	if s.resultQueue.Len() != 0 {
+		curWorstResult, _ = s.resultQueue.GetBottom()
+		if curWorstResult.Dist < curBestCandidate.Dist {
 			return false
 		}
 	}
 
-	bestCandidateNode, ok := s.nodes.get(curBestCandidate.nodeID)
+	bestCandidateNode, ok := s.nodes.get(curBestCandidate.NodeID)
 	if !ok {
 		s.err = errors.New("node unexpectedly missing from node store")
 		return false
 	}
 
 	for _, n := range bestCandidateNode.neighbors {
-		if n.nodeID == emptyNodeID {
+		if n.NodeID == graph.EmptyNodeID {
 			break
 		}
 
-		s.handleNeighbor(n.nodeID, curWorstResult)
+		s.handleNeighbor(n.NodeID, curWorstResult)
 		if s.err != nil {
 			return false
 		}
@@ -125,11 +120,11 @@ func (s *searcher) next() bool {
 	return true
 }
 
-func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult *nodeDistance) {
-	if s.visited.isVisited(neighborID) {
+func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult graph.NodeDistance) {
+	if s.visited.IsVisited(neighborID) {
 		return
 	}
-	s.visited.visit(neighborID)
+	s.visited.Visit(neighborID)
 
 	nNode, ok := s.nodes.get(neighborID)
 	if !ok {
@@ -137,7 +132,7 @@ func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult *nodeDistanc
 		return
 	}
 
-	nVec, ok := s.vectors.Get(nNode.vectorStoreID)
+	nVec, ok := s.vectors.Get(nNode.vectorID)
 	if !ok {
 		s.err = errors.New("vector in graph is missing from vector store")
 		return
@@ -149,26 +144,26 @@ func (s *searcher) handleNeighbor(neighborID uint32, curWorstResult *nodeDistanc
 		return
 	}
 
-	if s.resultQueue.len() < s.ef ||
-		(curWorstResult != nil && dist < curWorstResult.dist) {
+	if s.resultQueue.Len() < s.ef ||
+		(curWorstResult.NodeID != graph.EmptyNodeID && dist < curWorstResult.Dist) {
 
 		s.insertInQueue(nNode, dist)
 	}
 }
 
 func (s *searcher) insertInQueue(n node, dist float32) {
-	elem := nodeDistance{n.nodeStoreID, dist}
+	elem := graph.NodeDistance{NodeID: n.nodeID, Dist: dist}
 
-	s.resultQueue.insert(elem)
-	if s.resultQueue.len() > s.ef {
-		s.resultQueue.removeBottom()
+	s.resultQueue.Insert(elem)
+	if s.resultQueue.Len() > s.ef {
+		s.resultQueue.PopBottom()
 	}
 
-	s.candidateQueue.insert(elem)
+	s.candidateQueue.Insert(elem)
 }
 
 func (s *searcher) getErr() error {
-	if s.resultQueue.len() == 0 {
+	if s.resultQueue.Len() == 0 {
 		if s.err != nil {
 			s.err = fmt.Errorf("no results found: %w", s.err)
 		} else {
@@ -181,9 +176,10 @@ func (s *searcher) getErr() error {
 
 func (s *searcher) getResultVectors() []vektor.Vector {
 	result := make([]vektor.Vector, 0, s.k)
+	elems := s.resultQueue.Elems()
 
-	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
-		curNodeID := s.resultQueue.vecs[i].nodeID
+	for i := 0; i < s.k && i < len(elems); i++ {
+		curNodeID := elems[i].NodeID
 
 		resultNode, ok := s.nodes.get(curNodeID)
 		if !ok {
@@ -191,7 +187,7 @@ func (s *searcher) getResultVectors() []vektor.Vector {
 			return nil
 		}
 
-		vec, ok := s.vectors.Get(resultNode.vectorStoreID)
+		vec, ok := s.vectors.Get(resultNode.vectorID)
 		if !ok {
 			s.err = errors.New("vector in graph is missing from vector store")
 			return nil
@@ -203,23 +199,16 @@ func (s *searcher) getResultVectors() []vektor.Vector {
 	return result
 }
 
-func (s *searcher) getResultNodeDist() []nodeDistance {
-	result := make([]nodeDistance, 0, s.k)
-	for i := 0; i < s.k && i < len(s.resultQueue.vecs); i++ {
-		result = append(result, s.resultQueue.vecs[i])
-	}
-
-	return result
+func (s *searcher) getResultNodeDist() []graph.NodeDistance {
+	return s.resultQueue.Elems()
 }
 
 func (s *searcher) cleanup(n *NSW) {
 	n.visited.Put(s.visited)
 
-	clear(s.candidateQueue.vecs)
-	s.candidateQueue.vecs = s.candidateQueue.vecs[:0]
+	s.candidateQueue.Clear()
 	n.candidateQueuePool.Put(s.candidateQueue)
 
-	clear(s.resultQueue.vecs)
-	s.resultQueue.vecs = s.resultQueue.vecs[:0]
+	s.resultQueue.Clear()
 	n.resultQueuePool.Put(s.resultQueue)
 }
