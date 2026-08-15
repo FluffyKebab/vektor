@@ -98,12 +98,6 @@ func (s *nodeStore) get(id uint32) (node, bool) {
 	return node{id, s.vectorIDs[int(id)], s.neighbors[start:end]}, true
 }
 
-func (s *nodeStore) getNeighbors(id uint32) []nodeDistance {
-	start := int(id) * s.maxN
-	end := start + s.maxN
-	return s.neighbors[start:end]
-}
-
 func (s *nodeStore) newNode(vectorStoreID uint32) node {
 	id := s.nextID
 	s.nextID++
