@@ -9,6 +9,17 @@ var ErrInvalidID = errors.New("invalid node ID")
 
 const EmptyNodeID uint32 = math.MaxUint32
 
+type NodeStore interface {
+	Get(id uint32) (Node, bool)
+	Len() int
+}
+
+type Node struct {
+	Neighbors Neighbors
+	NodeID    uint32
+	VectorID  uint32
+}
+
 type NodeDistance struct {
 	NodeID uint32
 	Dist   float32

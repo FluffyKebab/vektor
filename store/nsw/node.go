@@ -2,18 +2,13 @@ package nsw
 
 import "github.com/FluffyKebab/vektor/store/graph"
 
-type node struct {
-	neighbors graph.Neighbors
-	nodeID    uint32
-	vectorID  uint32
-}
-
 type nodeStore struct {
 	neighbors []graph.NodeDistance
 	vectorIDs []uint32
-	nextID    uint32
 	maxN      int
 }
+
+var _ graph.NodeStore = &nodeStore{}
 
 func newNodeStore(maxN int) *nodeStore {
 	return &nodeStore{
@@ -23,20 +18,23 @@ func newNodeStore(maxN int) *nodeStore {
 	}
 }
 
-func (s *nodeStore) get(id uint32) (node, bool) {
+func (s *nodeStore) Get(id uint32) (graph.Node, bool) {
 	start := int(id) * s.maxN
 	end := start + s.maxN
 
 	if end > len(s.neighbors) || int(id) >= len(s.vectorIDs) {
-		return node{}, false
+		return graph.Node{}, false
 	}
 
-	return node{s.neighbors[start:end], id, s.vectorIDs[int(id)]}, true
+	return graph.Node{
+		Neighbors: s.neighbors[start:end],
+		NodeID:    id,
+		VectorID:  s.vectorIDs[int(id)],
+	}, true
 }
 
-func (s *nodeStore) newNode(vectorStoreID uint32) node {
-	id := s.nextID
-	s.nextID++
+func (s *nodeStore) newNode(vectorStoreID uint32) graph.Node {
+	id := len(s.vectorIDs)
 
 	prevLength := len(s.neighbors)
 	s.neighbors = append(s.neighbors, make([]graph.NodeDistance, s.maxN)...)
@@ -45,10 +43,10 @@ func (s *nodeStore) newNode(vectorStoreID uint32) node {
 	}
 	s.vectorIDs = append(s.vectorIDs, vectorStoreID)
 
-	newNode, _ := s.get(id)
-	return newNode
+	res, _ := s.Get(uint32(id))
+	return res
 }
 
-func (s *nodeStore) numNodes() int {
-	return int(s.nextID)
+func (s *nodeStore) Len() int {
+	return len(s.vectorIDs)
 }

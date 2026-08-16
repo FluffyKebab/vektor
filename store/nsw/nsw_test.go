@@ -1,7 +1,6 @@
 package nsw
 
 import (
-	"fmt"
 	"sort"
 	"testing"
 
@@ -42,23 +41,21 @@ func TestNSW_FindClosest(t *testing.T) {
 	nodeD := nsw.nodes.newNode(vIdD)
 
 	// Set entry node
-	nsw.entryNodeID = nodeA.nodeID
+	nsw.entryNodeID = nodeA.NodeID
 
 	// Setup a linear graph: NodeA(10) <-> NodeB(20) <-> NodeC(30) <-> NodeD(40)
 	// Using nsw.AddEdge guarantees we use fresh slice views from the nodeStore
-	require.NoError(t, nsw.AddEdge(nodeA.nodeID, nodeB.nodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeA.NodeID, nodeB.NodeID, 10.0))
 
-	require.NoError(t, nsw.AddEdge(nodeB.nodeID, nodeA.nodeID, 10.0))
-	require.NoError(t, nsw.AddEdge(nodeB.nodeID, nodeC.nodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeB.NodeID, nodeA.NodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeB.NodeID, nodeC.NodeID, 10.0))
 
-	require.NoError(t, nsw.AddEdge(nodeC.nodeID, nodeB.nodeID, 10.0))
-	require.NoError(t, nsw.AddEdge(nodeC.nodeID, nodeD.nodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeC.NodeID, nodeB.NodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeC.NodeID, nodeD.NodeID, 10.0))
 
-	require.NoError(t, nsw.AddEdge(nodeD.nodeID, nodeC.nodeID, 10.0))
+	require.NoError(t, nsw.AddEdge(nodeD.NodeID, nodeC.NodeID, 10.0))
 
-	fmt.Println(nsw.nodes.neighbors)
-
-	t.Run("Finds exact match when target exists", func(t *testing.T) {
+	t.Run("Finds exact match when tarGet exists", func(t *testing.T) {
 		target := vektor.NewInMemoryVector(99, []float32{40}) // Same value as NodeD
 
 		results, err := nsw.FindClosest(target, 1)
@@ -66,20 +63,20 @@ func TestNSW_FindClosest(t *testing.T) {
 		require.Len(t, results, 1, "Should return exactly k elements")
 
 		// result vector ID should match nodeD's store ID
-		require.Equal(t, nodeD.nodeID, results[0].ID())
+		require.Equal(t, nodeD.NodeID, results[0].ID())
 	})
 
-	t.Run("Finds k nearest neighbors correctly ordered", func(t *testing.T) {
-		target := vektor.NewInMemoryVector(99, []float32{32})
+	t.Run("Finds k nearest Neighbors correctly ordered", func(t *testing.T) {
+		tarGet := vektor.NewInMemoryVector(99, []float32{32})
 		// Distances: C(30)=2, D(40)=8, B(20)=12
 
-		// Looking for top 3 nearest neighbors
-		results, err := nsw.FindClosest(target, 3)
+		// Looking for top 3 nearest Neighbors
+		results, err := nsw.FindClosest(tarGet, 3)
 		require.NoError(t, err)
 		require.Len(t, results, 3)
 
 		// results slice should contain C, D, B in that exact order
-		expectedIDs := []uint32{nodeC.nodeID, nodeD.nodeID, nodeB.nodeID}
+		expectedIDs := []uint32{nodeC.NodeID, nodeD.NodeID, nodeB.NodeID}
 
 		var actualIDs []uint32
 		for _, r := range results {
@@ -90,7 +87,7 @@ func TestNSW_FindClosest(t *testing.T) {
 	})
 
 	t.Run("Distance cache (visited set) prevents redundant calculations", func(t *testing.T) {
-		target := vektor.NewInMemoryVector(99, []float32{25}) // Between B and C
+		tarGet := vektor.NewInMemoryVector(99, []float32{25}) // Between B and C
 
 		callCount := 0
 		originalDist := nsw.dist
@@ -102,7 +99,7 @@ func TestNSW_FindClosest(t *testing.T) {
 		}
 		defer func() { nsw.dist = originalDist }()
 
-		_, err := nsw.FindClosest(target, 2)
+		_, err := nsw.FindClosest(tarGet, 2)
 		require.NoError(t, err)
 
 		// Because we check the visited set `s.insertedInQueue` *before* calculating
@@ -119,15 +116,15 @@ func TestNSW_FindClosest(t *testing.T) {
 		vIdSolo, err := soloStore.Store([]float32{50})
 		require.NoError(t, err)
 		nodeSolo := soloNSW.nodes.newNode(vIdSolo)
-		soloNSW.entryNodeID = nodeSolo.nodeID
+		soloNSW.entryNodeID = nodeSolo.NodeID
 
-		target := vektor.NewInMemoryVector(99, []float32{42})
+		tarGet := vektor.NewInMemoryVector(99, []float32{42})
 
-		results, err := soloNSW.FindClosest(target, 3)
+		results, err := soloNSW.FindClosest(tarGet, 3)
 
 		require.NoError(t, err)
 		require.Len(t, results, 1, "Should gracefully return only 1 result if graph only has 1 node")
-		require.Equal(t, nodeSolo.nodeID, results[0].ID())
+		require.Equal(t, nodeSolo.NodeID, results[0].ID())
 	})
 }
 
@@ -142,9 +139,9 @@ func TestNSW_Insert(t *testing.T) {
 		require.NotEqual(t, graph.EmptyNodeID, nsw.entryNodeID)
 		require.Equal(t, 0, int(nsw.entryNodeID))
 
-		entryNode, _ := nsw.nodes.get(nsw.entryNodeID)
-		require.Equal(t, 0, int(entryNode.vectorID))
-		require.Zero(t, entryNode.neighbors.Len())
+		entryNode, _ := nsw.nodes.Get(nsw.entryNodeID)
+		require.Equal(t, 0, int(entryNode.VectorID))
+		require.Zero(t, entryNode.Neighbors.Len())
 	})
 
 	t.Run("Creates bi-directional edges on second insert", func(t *testing.T) {
@@ -158,14 +155,14 @@ func TestNSW_Insert(t *testing.T) {
 		_, err = nsw.Insert(vec2)
 		require.NoError(t, err)
 
-		entryNode, _ := nsw.nodes.get(nsw.entryNodeID)
-		require.Equal(t, 1, entryNode.neighbors.Len())
-		require.Equal(t, 1, int(entryNode.neighbors[0].NodeID))
+		entryNode, _ := nsw.nodes.Get(nsw.entryNodeID)
+		require.Equal(t, 1, entryNode.Neighbors.Len())
+		require.Equal(t, 1, int(entryNode.Neighbors[0].NodeID))
 
-		vec2Node, ok := nsw.nodes.get(entryNode.neighbors[0].NodeID)
+		vec2Node, ok := nsw.nodes.Get(entryNode.Neighbors[0].NodeID)
 		require.True(t, ok)
-		require.Equal(t, 1, vec2Node.neighbors.Len())
-		require.Equal(t, 0, int(vec2Node.neighbors[0].NodeID))
+		require.Equal(t, 1, vec2Node.Neighbors.Len())
+		require.Equal(t, 0, int(vec2Node.Neighbors[0].NodeID))
 	})
 
 	t.Run("Respects maxNeighbors and prunes worst edge", func(t *testing.T) {
@@ -185,27 +182,27 @@ func TestNSW_Insert(t *testing.T) {
 
 		// Do a quick BFS to grab all nodes and check their neighbor counts
 		visited := make(map[uint32]bool)
-		entryNode, _ := nsw.nodes.get(nsw.entryNodeID)
-		queue := []node{entryNode}
+		entryNode, _ := nsw.nodes.Get(nsw.entryNodeID)
+		queue := []graph.Node{entryNode}
 
 		for len(queue) > 0 {
 			curr := queue[0]
 			queue = queue[1:]
 
-			if visited[curr.nodeID] {
+			if visited[curr.NodeID] {
 				continue
 			}
-			visited[curr.nodeID] = true
+			visited[curr.NodeID] = true
 
 			// Assert no node exceeded maxNeighbors
-			assert.LessOrEqual(t, curr.neighbors.Len(), nsw.maxNeighbors, "Node %d exceeded max neighbors", curr.nodeID)
+			assert.LessOrEqual(t, curr.Neighbors.Len(), nsw.maxNeighbors, "Node %d exceeded max Neighbors", curr.NodeID)
 
-			for _, neighbor := range curr.neighbors {
+			for _, neighbor := range curr.Neighbors {
 				if neighbor.NodeID == graph.EmptyNodeID {
 					break
 				}
 
-				n, ok := nsw.nodes.get(neighbor.NodeID)
+				n, ok := nsw.nodes.Get(neighbor.NodeID)
 				require.True(t, ok)
 				queue = append(queue, n)
 			}
@@ -215,18 +212,18 @@ func TestNSW_Insert(t *testing.T) {
 	})
 }
 
-func bruteForceKNN(target vektor.Vector, dataset []vektor.Vector, k int) []vektor.Vector {
+func bruteForceKNN(tarGet vektor.Vector, dataset []vektor.Vector, k int) []vektor.Vector {
 	type distPair struct {
 		v vektor.Vector
 		d float32
 	}
 
-	targetData, _ := target.Read()
+	tarGetData, _ := tarGet.Read()
 
 	var pairs []distPair
 	for _, v := range dataset {
 		vData, _ := v.Read()
-		d, _ := vektor.Euclidean(targetData, vData)
+		d, _ := vektor.Euclidean(tarGetData, vData)
 		pairs = append(pairs, distPair{v, d})
 	}
 
@@ -261,15 +258,15 @@ func TestNSW_InsertAndFindClosest(t *testing.T) {
 		}
 	}
 
-	// 2. Define a target
-	target := makeVec(999, 46.0, 46.0)
+	// 2. Define a tarGet
+	tarGet := makeVec(999, 46.0, 46.0)
 	k := 5
 
 	// 3. Find the mathematical ground truth
-	expectedResults := bruteForceKNN(target, dataset, k)
+	expectedResults := bruteForceKNN(tarGet, dataset, k)
 
 	// 4. Query the NSW Graph
-	actualResults, err := nsw.FindClosest(target, k)
+	actualResults, err := nsw.FindClosest(tarGet, k)
 	require.NoError(t, err)
 	require.Len(t, actualResults, k)
 
@@ -301,11 +298,11 @@ func TestNSW_AddNode(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify it was added to the nodeStore at internal ID 0
-		addedNode, exists := nsw.nodes.get(0)
+		addedNode, exists := nsw.nodes.Get(0)
 		require.True(t, exists)
 		require.NotNil(t, addedNode)
-		assert.Equal(t, uint32(100), addedNode.vectorID)
-		assert.Equal(t, 1, nsw.nodes.numNodes())
+		assert.Equal(t, uint32(100), addedNode.VectorID)
+		assert.Equal(t, 1, nsw.nodes.Len())
 	})
 }
 
@@ -318,21 +315,21 @@ func TestNSW_AddEdge(t *testing.T) {
 		n1 := nsw.nodes.newNode(100)
 		n2 := nsw.nodes.newNode(200)
 
-		err := nsw.AddEdge(n1.nodeID, n2.nodeID, 5.42)
+		err := nsw.AddEdge(n1.NodeID, n2.NodeID, 5.42)
 		require.NoError(t, err)
 
-		n1, ok := nsw.nodes.get(n1.nodeID)
+		n1, ok := nsw.nodes.Get(n1.NodeID)
 		require.True(t, ok)
-		n2, ok = nsw.nodes.get(n2.nodeID)
+		n2, ok = nsw.nodes.Get(n2.NodeID)
 		require.True(t, ok)
 
 		// Verify neighbor was appended correctly to n1
-		require.Equal(t, 1, n1.neighbors.Len())
-		assert.Equal(t, n2.nodeID, n1.neighbors[0].NodeID)
-		assert.Equal(t, float32(5.42), n1.neighbors[0].Dist)
+		require.Equal(t, 1, n1.Neighbors.Len())
+		assert.Equal(t, n2.NodeID, n1.Neighbors[0].NodeID)
+		assert.Equal(t, float32(5.42), n1.Neighbors[0].Dist)
 
 		// Verify n2 was NOT modified (directed edge behavior)
-		assert.Equal(t, 0, n2.neighbors.Len())
+		assert.Equal(t, 0, n2.Neighbors.Len())
 	})
 
 	t.Run("Errors when fromID is missing", func(t *testing.T) {
@@ -360,22 +357,22 @@ func TestNSW_RemoveEdge(t *testing.T) {
 	t.Run("Successfully removes an existing edge", func(t *testing.T) {
 		nsw := &NSW{nodes: newNodeStore(5)}
 
-		n1 := nsw.nodes.newNode(100) // nodeID 0
-		n2 := nsw.nodes.newNode(200) // nodeID 1
+		n1 := nsw.nodes.newNode(100) // NodeID 0
+		n2 := nsw.nodes.newNode(200) // NodeID 0
 
 		// Link them
-		nsw.AddEdge(n1.nodeID, n2.nodeID, 3.14)
+		nsw.AddEdge(n1.NodeID, n2.NodeID, 3.14)
 
-		n1, _ = nsw.nodes.get(0) // nodeID 0
-		require.Equal(t, 1, n1.neighbors.Len())
+		n1, _ = nsw.nodes.Get(0) // NodeID 0
+		require.Equal(t, 1, n1.Neighbors.Len())
 
 		// Remove the edge
-		err := nsw.RemoveEdge(n1.nodeID, n2.nodeID)
+		err := nsw.RemoveEdge(n1.NodeID, n2.NodeID)
 		require.NoError(t, err)
 
 		// In the new array implementation, removing an edge replaces it with graph.EmptyNodeID
-		assert.Equal(t, 0, n1.neighbors.Len())
-		assert.Equal(t, graph.EmptyNodeID, n1.neighbors[0].NodeID)
+		assert.Equal(t, 0, n1.Neighbors.Len())
+		assert.Equal(t, graph.EmptyNodeID, n1.Neighbors[0].NodeID)
 	})
 
 	t.Run("Errors when fromID is missing", func(t *testing.T) {
@@ -399,11 +396,11 @@ func TestNSW_RemoveEdge(t *testing.T) {
 	t.Run("Errors when edge does not exist", func(t *testing.T) {
 		nsw := &NSW{nodes: newNodeStore(5)}
 
-		n1 := nsw.nodes.newNode(100) // nodeID 0
-		n2 := nsw.nodes.newNode(200) // nodeID 1
+		n1 := nsw.nodes.newNode(100) // NodeID 0
+		n2 := nsw.nodes.newNode(200) // NodeID 1
 
-		// Nodes exist, but n1 has no neighbors
-		err := nsw.RemoveEdge(n1.nodeID, n2.nodeID)
+		// Nodes exist, but n1 has no Neighbors
+		err := nsw.RemoveEdge(n1.NodeID, n2.NodeID)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "does not have neighbor")
 	})

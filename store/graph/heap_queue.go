@@ -17,7 +17,7 @@ func (q *HeapQueue) Insert(nd NodeDistance) {
 	q.up(len(q.elems) - 1)
 }
 
-// PopTop pops the element with the lowest distance.
+// PopTop pops the element with the lowest distance. Errors if length of queue is zero.
 func (q *HeapQueue) PopTop() (NodeDistance, error) {
 	n := len(q.elems) - 1
 	if n < 0 {
