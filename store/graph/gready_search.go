@@ -96,9 +96,9 @@ func (s *searcher) next() bool {
 		}
 	}
 
-	bestCandidateNode, ok := s.nodes.Get(curBestCandidate.NodeID)
-	if !ok {
-		s.err = errors.New("node unexpectedly missing from node store")
+	bestCandidateNode, err := s.nodes.Get(curBestCandidate.NodeID)
+	if err != nil {
+		s.err = fmt.Errorf("node unexpectedly missing from node store: %w", err)
 		return false
 	}
 
@@ -152,9 +152,9 @@ func (s *searcher) insertInQueue(n Node, dist float32) {
 }
 
 func (s *searcher) getNodeAndVector(nodeID uint32) (Node, []float32) {
-	node, ok := s.nodes.Get(nodeID)
-	if !ok {
-		s.err = errors.New("node in graph is missing from node store")
+	node, err := s.nodes.Get(nodeID)
+	if err != nil {
+		s.err = fmt.Errorf("node in graph is missing from node store: %w", err)
 		return Node{}, nil
 	}
 

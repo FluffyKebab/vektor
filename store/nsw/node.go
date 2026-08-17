@@ -18,19 +18,19 @@ func newNodeStore(maxN int) *nodeStore {
 	}
 }
 
-func (s *nodeStore) Get(id uint32) (graph.Node, bool) {
+func (s *nodeStore) Get(id uint32) (graph.Node, error) {
 	start := int(id) * s.maxN
 	end := start + s.maxN
 
 	if end > len(s.neighbors) || int(id) >= len(s.vectorIDs) {
-		return graph.Node{}, false
+		return graph.Node{}, graph.ErrInvalidID
 	}
 
 	return graph.Node{
 		Neighbors: s.neighbors[start:end],
 		NodeID:    id,
 		VectorID:  s.vectorIDs[int(id)],
-	}, true
+	}, nil
 }
 
 func (s *nodeStore) newNode(vectorStoreID uint32) graph.Node {

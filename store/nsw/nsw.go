@@ -84,8 +84,8 @@ func (n *NSW) Insert(vec vektor.Vector) (vektor.Vector, error) {
 	}
 
 	for _, nodeDist := range result {
-		newNeighbor, found := n.nodes.Get(nodeDist.NodeID)
-		if !found {
+		newNeighbor, err := n.nodes.Get(nodeDist.NodeID)
+		if err != nil {
 			return nil, errors.New("node unexpectedly missing from node store")
 		}
 
@@ -160,14 +160,14 @@ func (n *NSW) removeWorstNeighbor(n1 graph.Node) {
 }
 
 func (n *NSW) AddEdge(fromID uint32, toID uint32, dist float32) error {
-	n1, ok := n.nodes.Get(fromID)
-	if !ok {
-		return fmt.Errorf("adding edge: from_node %d does not exist in graph", fromID)
+	n1, err := n.nodes.Get(fromID)
+	if err != nil {
+		return fmt.Errorf("adding edge: from_node %d does not exist in graph: %w", fromID, err)
 	}
 
-	_, ok = n.nodes.Get(toID)
-	if !ok {
-		return fmt.Errorf("adding edge: to_node %d does not exist in graph", toID)
+	_, err = n.nodes.Get(toID)
+	if err != nil {
+		return fmt.Errorf("adding edge: to_node %d does not exist in graph: %w", toID, err)
 	}
 
 	n1.Neighbors.AddNeighbor(graph.NodeDistance{NodeID: toID, Dist: dist})
@@ -180,14 +180,14 @@ func (n *NSW) AddNode(vectorID uint32) error {
 }
 
 func (n *NSW) RemoveEdge(fromID uint32, toID uint32) error {
-	n1, ok := n.nodes.Get(fromID)
-	if !ok {
-		return fmt.Errorf("removing edge: from_node %d does not exist in graph", fromID)
+	n1, err := n.nodes.Get(fromID)
+	if err != nil {
+		return fmt.Errorf("removing edge: from_node %d does not exist in graph: %w", fromID, err)
 	}
 
-	n2, ok := n.nodes.Get(toID)
-	if !ok {
-		return fmt.Errorf("removing edge: to_node %d does not exist in graph", toID)
+	n2, err := n.nodes.Get(toID)
+	if err != nil {
+		return fmt.Errorf("removing edge: from_node %d does not exist in graph: %w", fromID, err)
 	}
 
 	n2IdxInN1 := n1.Neighbors.IndexOf(n2.NodeID)
@@ -223,9 +223,9 @@ func (s *NSW) getResultVectors(nodeDist []graph.NodeDistance) ([]vektor.Vector, 
 	result := make([]vektor.Vector, 0, len(nodeDist))
 
 	for _, cur := range nodeDist {
-		node, ok := s.nodes.Get(cur.NodeID)
-		if !ok {
-			return nil, errors.New("node in graph is missing from node store")
+		node, err := s.nodes.Get(cur.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("node in graph is missing from node store: %w", err)
 		}
 
 		vector, ok := s.vectors.Get(node.VectorID)

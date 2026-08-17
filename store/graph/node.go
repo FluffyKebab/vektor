@@ -10,7 +10,7 @@ var ErrInvalidID = errors.New("invalid node ID")
 const EmptyNodeID uint32 = math.MaxUint32
 
 type NodeStore interface {
-	Get(id uint32) (Node, bool)
+	Get(id uint32) (Node, error)
 	Len() int
 }
 

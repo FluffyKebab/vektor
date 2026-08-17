@@ -46,14 +46,14 @@ func TestNodeStore(t *testing.T) {
 		store.newNode(20) // NodeStoreID 1
 
 		// Get valid Node 0
-		n0, ok := store.Get(0)
-		assert.True(t, ok)
+		n0, err := store.Get(0)
+		assert.NoError(t, err)
 		assert.Equal(t, uint32(10), n0.VectorID)
 		assert.Len(t, n0.Neighbors, 2)
 
 		// Get valid Node 1
-		n1, ok := store.Get(1)
-		assert.True(t, ok)
+		n1, err := store.Get(1)
+		assert.NoError(t, err)
 		assert.Equal(t, uint32(20), n1.VectorID)
 		assert.Len(t, n1.Neighbors, 2)
 
@@ -63,7 +63,7 @@ func TestNodeStore(t *testing.T) {
 		assert.Equal(t, graph.EmptyNodeID, store.neighbors[2].NodeID, "Node 1 should remain unaffected")
 
 		// Get invalid Node out of bounds
-		_, ok = store.Get(2)
-		assert.False(t, ok, "Should return false for out-of-bounds ID")
+		_, err = store.Get(2)
+		assert.Error(t, err, "Should get error for out-of-bounds ID")
 	})
 }
